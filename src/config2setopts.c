@@ -509,9 +509,10 @@ static CURLcode http_setopts(struct GlobalConfig *global,
 
   /* Set QUIC version using the new CURLOPT */
   if(config->quic_version != 0) { /* Only set if specified by the tool */
-    result = my_setopt_long(curl, CURLOPT_QUIC_VERSION, (long)config->quic_version);
-    if(result)
-      return result;
+    CURLcode quic_version_setopt_result; /* Declare a new, local variable */
+    quic_version_setopt_result = my_setopt_long(curl, CURLOPT_QUIC_VERSION, (long)config->quic_version);
+    if(quic_version_setopt_result)
+      return quic_version_setopt_result; /* Return this specific result */
   }
 
   if(config->altsvc)
