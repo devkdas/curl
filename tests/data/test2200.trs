@@ -1,0 +1,5 @@
+stderr:
+* Trying HTTP/3 for %s...
+* QUIC connect to %s port 443 failed: %s
+* Closing connection %d
+res: CURLE_QUIC_CONNECT_ERROR (92)

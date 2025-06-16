@@ -1,0 +1,4 @@
+stdout:
+HTTP/3 200 OK
+%s
+res: CURLE_OK (0)
