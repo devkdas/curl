@@ -313,6 +313,7 @@ man_MANS =                                      \
   CURLOPT_PROXYUSERNAME.3                       \
   CURLOPT_PROXYUSERPWD.3                        \
   CURLOPT_PUT.3                                 \
+  CURLOPT_QUIC_VERSION.3                        \
   CURLOPT_QUICK_EXIT.3                          \
   CURLOPT_QUOTE.3                               \
   CURLOPT_RANDOM_FILE.3                         \
