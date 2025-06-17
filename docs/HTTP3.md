@@ -11,7 +11,7 @@ SPDX-License-Identifier: curl
 [HTTP/3 Explained](https://http3-explained.haxx.se/en/) - the online free
 book describing the protocols involved.
 
-[quicwg.org](https://quicwg.org/) - home of the official protocol drafts
+[quicwg.org](https://quicwg.org/) - home of the official QUIC protocol drafts
 
 ## QUIC libraries
 
