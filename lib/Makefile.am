@@ -23,14 +23,17 @@
 ###########################################################################
 AUTOMAKE_OPTIONS = foreign nostdinc
 
+# Get CSOURCES, HHEADERS, LIB_RCFILES variables
+include Makefile.inc
+
 CMAKE_DIST = CMakeLists.txt curl_config.h.cmake
 
 CHECKSRC_DIST = .checksrc vauth/.checksrc vquic/.checksrc vssh/.checksrc \
- vtls/.checksrc
+  vtls/.checksrc
 
 EXTRA_DIST = config-mac.h config-os400.h config-plan9.h config-riscos.h \
- config-win32.h curl_config.h.in libcurl.rc libcurl.def                 \
- $(CMAKE_DIST) Makefile.soname optiontable.pl $(CHECKSRC_DIST)
+  config-win32.h curl_config.h.in $(LIB_RCFILES) libcurl.def            \
+  $(CMAKE_DIST) Makefile.soname optiontable.pl $(CHECKSRC_DIST)
 
 lib_LTLIBRARIES = libcurl.la
 
@@ -50,6 +53,7 @@ CFLAGS += @CURL_CFLAG_EXTRAS@
 #
 # $(top_srcdir)/include is for libcurl's external include files
 # $(top_builddir)/lib is for libcurl's generated lib/curl_config.h file
+# $(srcdir) for the generated unity source to find included sources
 
 AM_CPPFLAGS = -I$(top_srcdir)/include   \
               -I$(top_builddir)/lib     \
@@ -67,9 +71,6 @@ endif
 if CURLDEBUG
 AM_CPPFLAGS += -DCURLDEBUG
 endif
-
-# Get CSOURCES, HHEADERS variables
-include Makefile.inc
 
 if DOING_NATIVE_WINDOWS
 CSOURCES += dllmain.c
@@ -155,7 +156,7 @@ endif
 endif
 
 # disable the tests that are mostly causing false positives
-TIDYFLAGS := -checks=-clang-analyzer-security.insecureAPI.strcpy,-clang-analyzer-optin.performance.Padding,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling -quiet
+TIDYFLAGS := -checks=-clang-analyzer-security.insecureAPI.bzero,-clang-analyzer-security.insecureAPI.strcpy,-clang-analyzer-optin.performance.Padding,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling -quiet
 if CURL_WERROR
 TIDYFLAGS += --warnings-as-errors=*
 endif

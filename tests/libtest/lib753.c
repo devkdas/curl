@@ -21,11 +21,9 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "test.h"
+#include "first.h"
 
-#include "testutil.h"
 #include "testtrace.h"
-#include "warnless.h"
 #include "memdebug.h"
 
 struct t753_transfer_status {

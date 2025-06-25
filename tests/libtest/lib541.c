@@ -21,11 +21,7 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "test.h"
-
-#ifdef HAVE_FCNTL_H
-#include <fcntl.h>
-#endif
+#include "first.h"
 
 #include "memdebug.h"
 

@@ -21,12 +21,8 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "test.h"
+#include "first.h"
 
-#include <fcntl.h>
-
-#include "testutil.h"
-#include "warnless.h"
 #include "memdebug.h"
 
 struct t582_Sockets {
@@ -54,7 +50,7 @@ static void t582_removeFd(struct t582_Sockets *sockets, curl_socket_t fd,
     if(sockets->sockets[i] == fd) {
       if(i < sockets->count - 1)
         memmove(&sockets->sockets[i], &sockets->sockets[i + 1],
-              sizeof(curl_socket_t) * (sockets->count - (i + 1)));
+                sizeof(curl_socket_t) * (sockets->count - (i + 1)));
       --sockets->count;
     }
   }
@@ -123,11 +119,11 @@ static int t582_curlSocketCallback(CURL *easy, curl_socket_t s, int action,
  */
 static int t582_curlTimerCallback(CURLM *multi, long timeout_ms, void *userp)
 {
-  struct timeval *timeout = userp;
+  struct curltime *timeout = userp;
 
   (void)multi; /* unused */
   if(timeout_ms != -1) {
-    *timeout = tutil_tvnow();
+    *timeout = curlx_now();
     timeout->tv_usec += (int)timeout_ms * 1000;
   }
   else {
@@ -165,11 +161,11 @@ static int t582_checkForCompletion(CURLM *curl, int *success)
   return result;
 }
 
-static int t582_getMicroSecondTimeout(struct timeval *timeout)
+static int t582_getMicroSecondTimeout(struct curltime *timeout)
 {
-  struct timeval now;
+  struct curltime now;
   ssize_t result;
-  now = tutil_tvnow();
+  now = curlx_now();
   result = (ssize_t)((timeout->tv_sec - now.tv_sec) * 1000000 +
     timeout->tv_usec - now.tv_usec);
   if(result < 0)
@@ -235,7 +231,7 @@ static CURLcode test_lib582(char *URL)
   CURLM *m = NULL;
   struct t582_ReadWriteSockets sockets = {{NULL, 0, 0}, {NULL, 0, 0}};
   int success = 0;
-  struct timeval timeout = {0};
+  struct curltime timeout = {0};
   timeout.tv_sec = (time_t)-1;
 
   assert(test_argc >= 5);
@@ -272,7 +268,7 @@ static CURLcode test_lib582(char *URL)
   curl_mfprintf(stderr, "Set to upload %d bytes\n", (int)file_info.st_size);
 
   res_global_init(CURL_GLOBAL_ALL);
-  if(res) {
+  if(res != CURLE_OK) {
     fclose(hd_src);
     return res;
   }

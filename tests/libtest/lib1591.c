@@ -27,8 +27,8 @@
  * from server http header
  */
 
-#include "test.h"
-#include <stdio.h>
+#include "first.h"
+
 #include "memdebug.h"
 
 static size_t consumed = 0;

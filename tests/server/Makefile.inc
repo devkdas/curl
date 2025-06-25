@@ -24,23 +24,24 @@
 # Shared between CMakeLists.txt and Makefile.am
 
 BUNDLE = servers
-BUNDLE_SRC = servers.c
 
 # Files referenced from the bundle source
 FIRSTFILES = first.c first.h
 
 # Common files used by test programs
-UTILS = getpart.c getpart.h util.c util.h
+UTILS = memptr.c getpart.c util.c
 
-CURLX_SRCS = \
+CURLX_CFILES = \
   ../../lib/curlx/base64.c \
   ../../lib/curlx/inet_pton.c \
+  ../../lib/curlx/inet_ntop.c \
   ../../lib/curlx/multibyte.c \
   ../../lib/curlx/nonblock.c \
   ../../lib/curlx/strparse.c \
   ../../lib/curlx/timediff.c \
   ../../lib/curlx/timeval.c \
   ../../lib/curlx/version_win32.c \
+  ../../lib/curlx/wait.c \
   ../../lib/curlx/warnless.c \
   ../../lib/curlx/winapi.c
 

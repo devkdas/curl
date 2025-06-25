@@ -25,9 +25,8 @@
  * argv2 = proxy with embedded user+password
  */
 
-#include "test.h"
+#include "first.h"
 
-#include "warnless.h"
 #include "memdebug.h"
 
 struct t552_testdata {

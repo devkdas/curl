@@ -32,12 +32,11 @@
 #include "curl_setup.h"
 
 #include <curl/curl.h>
+#include <curlx/timeval.h>
 
 #ifdef HAVE_SYS_SELECT_H
 /* since so many tests use select(), we can just as well include it here */
 #include <sys/select.h>
-#elif defined(HAVE_UNISTD_H)
-#include <unistd.h>
 #endif
 
 #include "curl_printf.h"
@@ -47,10 +46,6 @@
 #if (defined(__GNUC__) && \
   ((__GNUC__ > 4) || ((__GNUC__ == 4) && (__GNUC_MINOR__ >= 6))))
 #define CURL_GNUC_DIAG
-#endif
-
-#ifdef _WIN32
-#define sleep(sec) Sleep((sec)*1000)
 #endif
 
 #define test_setopt(A,B,C)                                      \
@@ -69,12 +64,10 @@ extern char *libtest_arg4; /* set by first.c to the argv[4] or NULL */
 extern int test_argc;
 extern char **test_argv;
 extern int testnum;
-extern struct timeval tv_test_start; /* for test timing */
+extern struct curltime tv_test_start; /* for test timing */
 
 extern int select_wrapper(int nfds, fd_set *rd, fd_set *wr, fd_set *exc,
                           struct timeval *tv);
-
-extern void wait_ms(int ms); /* wait this many milliseconds */
 
 extern char *hexdump(const unsigned char *buffer, size_t len);
 
@@ -440,30 +433,38 @@ extern int unitfail;
 /* ---------------------------------------------------------------- */
 
 #define start_test_timing() do { \
-  tv_test_start = tutil_tvnow(); \
+  tv_test_start = curlx_now(); \
 } while(0)
 
-#define exe_test_timedout(Y,Z) do {                                     \
-  long timediff = tutil_tvdiff(tutil_tvnow(), tv_test_start);           \
-  if(timediff > (TEST_HANG_TIMEOUT)) {                                  \
+#define TEST_HANG_TIMEOUT 60 * 1000  /* global default */
+
+#define exe_test_timedout(T,Y,Z) do {                                   \
+  timediff_t timediff = curlx_timediff(curlx_now(), tv_test_start);     \
+  if(timediff > (T)) {                                                  \
     curl_mfprintf(stderr, "%s:%d ABORTING TEST, since it seems "        \
                   "that it would have run forever (%ld ms > %ld ms)\n", \
-                  (Y), (Z), timediff, (long) (TEST_HANG_TIMEOUT));      \
+                  (Y), (Z), (long)timediff, (long)(TEST_HANG_TIMEOUT)); \
     res = TEST_ERR_RUNS_FOREVER;                                        \
   }                                                                     \
 } while(0)
 
 #define res_test_timedout() \
-  exe_test_timedout((__FILE__), (__LINE__))
+  exe_test_timedout(TEST_HANG_TIMEOUT, (__FILE__), (__LINE__))
 
-#define chk_test_timedout(Y, Z) do { \
-    exe_test_timedout(Y, Z);         \
-    if(res)                          \
-      goto test_cleanup;             \
+#define res_test_timedout_custom(T) \
+  exe_test_timedout((T), (__FILE__), (__LINE__))
+
+#define chk_test_timedout(T, Y, Z) do { \
+    exe_test_timedout(T, Y, Z);         \
+    if(res)                             \
+      goto test_cleanup;                \
   } while(0)
 
 #define abort_on_test_timeout() \
-  chk_test_timedout((__FILE__), (__LINE__))
+  chk_test_timedout(TEST_HANG_TIMEOUT, (__FILE__), (__LINE__))
+
+#define abort_on_test_timeout_custom(T) \
+  chk_test_timedout((T), (__FILE__), (__LINE__))
 
 /* ---------------------------------------------------------------- */
 
@@ -499,13 +500,8 @@ extern int unitfail;
     return CURLE_UNSUPPORTED_PROTOCOL;          \
   }
 
-/* global default */
-#define NUM_HANDLES 4
+#define NUM_HANDLES 4  /* global default */
 
 /* ---------------------------------------------------------------- */
 
 #endif /* HEADER_CURL_TEST_H */
-
-/* Set default that each test may override */
-#undef TEST_HANG_TIMEOUT
-#define TEST_HANG_TIMEOUT 60 * 1000

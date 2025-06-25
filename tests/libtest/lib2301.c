@@ -21,7 +21,7 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "test.h"
+#include "first.h"
 
 #ifndef CURL_DISABLE_WEBSOCKETS
 #if 0
@@ -84,7 +84,7 @@ static void t2301_websocket(CURL *curl)
       return;
     if(t2301_recv_pong(curl, "foobar"))
       return;
-    sleep(2);
+    curlx_wait_ms(2000);
   } while(i++ < 10);
   t2301_websocket_close(curl);
 }

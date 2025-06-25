@@ -21,10 +21,8 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "test.h"
+#include "first.h"
 
-#include "testutil.h"
-#include "warnless.h"
 #include "memdebug.h"
 
 /* The maximum string length limit (CURL_MAX_INPUT_LENGTH) is an internal

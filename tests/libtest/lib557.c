@@ -27,9 +27,7 @@
  * curl_m*printf formatting capabilities and handling of some data types.
  */
 
-#include "test.h"
-
-#include <limits.h>
+#include "first.h"
 
 #ifdef HAVE_LOCALE_H
 #  include <locale.h> /* for setlocale() */

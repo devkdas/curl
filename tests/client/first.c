@@ -21,6 +21,7 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
+#include "first.h"
 
 int main(int argc, char **argv)
 {
@@ -29,13 +30,13 @@ int main(int argc, char **argv)
   size_t tmp;
 
   if(argc < 2) {
-    fprintf(stderr, "Pass clientname as first argument\n");
+    curl_mfprintf(stderr, "Pass clientname as first argument\n");
     return 1;
   }
 
   entry_name = argv[1];
   entry_func = NULL;
-  for(tmp = 0; tmp < CURL_ARRAYSIZE(s_entries); ++tmp) {
+  for(tmp = 0; s_entries[tmp].ptr; ++tmp) {
     if(strcmp(entry_name, s_entries[tmp].name) == 0) {
       entry_func = s_entries[tmp].ptr;
       break;
@@ -43,7 +44,7 @@ int main(int argc, char **argv)
   }
 
   if(!entry_func) {
-    fprintf(stderr, "Test '%s' not found.\n", entry_name);
+    curl_mfprintf(stderr, "Test '%s' not found.\n", entry_name);
     return 99;
   }
 

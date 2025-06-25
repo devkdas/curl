@@ -22,29 +22,31 @@
 #
 ###########################################################################
 
-# Get BUNDLE, BUNDLE_SRC, FIRSTFILES, UTILS, TESTFILES variables
+# Get BUNDLE, FIRSTFILES, UTILS, TESTFILES variables
 curl_transform_makefile_inc("Makefile.inc" "${CMAKE_CURRENT_BINARY_DIR}/Makefile.inc.cmake")
 include("${CMAKE_CURRENT_BINARY_DIR}/Makefile.inc.cmake")
 
-add_custom_command(
-  OUTPUT "${BUNDLE_SRC}"
-  COMMAND ${PERL_EXECUTABLE} "${PROJECT_SOURCE_DIR}/scripts/mk-unity.pl" --test ${TESTFILES}
-    ${CURL_MK_UNITY_OPTION} --srcdir "${CMAKE_CURRENT_SOURCE_DIR}" > "${BUNDLE_SRC}"
+add_custom_command(OUTPUT "${BUNDLE}.c"
+  COMMAND ${PERL_EXECUTABLE} "${PROJECT_SOURCE_DIR}/scripts/mk-unity.pl"
+    --include ${UTILS} --test ${TESTFILES} > "${BUNDLE}.c"
   DEPENDS
-    "${PROJECT_SOURCE_DIR}/scripts/mk-unity.pl" "${CMAKE_CURRENT_SOURCE_DIR}/Makefile.inc" ${FIRSTFILES} ${TESTFILES}
+    "${PROJECT_SOURCE_DIR}/scripts/mk-unity.pl" "${CMAKE_CURRENT_SOURCE_DIR}/Makefile.inc"
+    ${FIRSTFILES} ${UTILS} ${TESTFILES}
   VERBATIM)
 
-add_executable(units EXCLUDE_FROM_ALL ${UTILS} "${BUNDLE_SRC}")
-add_dependencies(testdeps units)
-target_link_libraries(units curltool curlu)
-target_include_directories(units PRIVATE
+add_executable(${BUNDLE} EXCLUDE_FROM_ALL "${BUNDLE}.c")
+add_dependencies(testdeps ${BUNDLE})
+target_link_libraries(${BUNDLE} curlu)
+target_include_directories(${BUNDLE} PRIVATE
   "${PROJECT_BINARY_DIR}/lib"            # for "curl_config.h"
-  "${PROJECT_SOURCE_DIR}/lib"            # for "curl_setup.h"
-  "${PROJECT_SOURCE_DIR}/lib/curlx"      # for curlx
-  "${PROJECT_SOURCE_DIR}/src"
-  "${PROJECT_SOURCE_DIR}/tests/libtest"
-  "${PROJECT_SOURCE_DIR}/tests/unit"
+  "${PROJECT_SOURCE_DIR}/lib"            # for "curl_setup.h", curlx
+  "${PROJECT_SOURCE_DIR}/tests/libtest"  # for "first.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}"          # for the generated bundle source to find included test sources
 )
-set_property(TARGET units APPEND PROPERTY COMPILE_DEFINITIONS "${CURL_DEBUG_MACROS}" "CURL_NO_OLDIES" "CURL_DISABLE_DEPRECATION")
-set_property(TARGET units APPEND PROPERTY COMPILE_DEFINITIONS "BUILDING_LIBCURL")  # unit tests are small pretend-libcurl-programs
-set_target_properties(units PROPERTIES OUTPUT_NAME "${BUNDLE}" PROJECT_LABEL "Test ${BUNDLE}" UNITY_BUILD OFF)
+set_property(TARGET ${BUNDLE} APPEND PROPERTY COMPILE_DEFINITIONS "${CURL_DEBUG_MACROS}")
+set_property(TARGET ${BUNDLE} APPEND PROPERTY COMPILE_DEFINITIONS "CURL_NO_OLDIES" "CURL_DISABLE_DEPRECATION")
+# unit tests are small pretend-libcurl-programs
+set_property(TARGET ${BUNDLE} APPEND PROPERTY COMPILE_DEFINITIONS "BUILDING_LIBCURL")
+set_target_properties(${BUNDLE} PROPERTIES OUTPUT_NAME "${BUNDLE}" PROJECT_LABEL "Test ${BUNDLE}" UNITY_BUILD OFF C_CLANG_TIDY "")
+
+curl_clang_tidy_tests(${BUNDLE} ${FIRSTFILES} ${UTILS} ${TESTFILES})

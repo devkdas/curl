@@ -21,9 +21,8 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "test.h"
+#include "first.h"
 
-#include "warnless.h"
 #include "memdebug.h"
 
 static CURLcode test_lib1916(char *URL)

@@ -29,12 +29,8 @@
  * leak in the CURLOPT_RESOLVE handling with the multi interface.
  */
 
-#include "test.h"
+#include "first.h"
 
-#include <limits.h>
-
-#include "testutil.h"
-#include "warnless.h"
 #include "memdebug.h"
 
 static CURLcode test_lib1502(char *URL)

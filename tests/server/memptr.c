@@ -21,39 +21,30 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "tool_setup.h"
+#include "first.h"
 
-#ifdef HAVE_SYS_SELECT_H
-#  include <sys/select.h>
-#elif defined(HAVE_UNISTD_H)
-#  include <unistd.h>
-#endif
+#include "curl_memory.h"
 
-#ifdef HAVE_POLL_H
-#  include <poll.h>
-#elif defined(HAVE_SYS_POLL_H)
-#  include <sys/poll.h>
-#endif
-
-#ifdef MSDOS
-#  include <dos.h>
-#endif
-
-#include "tool_sleep.h"
-
-#include <memdebug.h> /* keep this as LAST include */
-
-void tool_go_sleep(long ms)
-{
-#if defined(MSDOS)
-  delay(ms);
-#elif defined(_WIN32)
-  Sleep((DWORD)ms);
+#ifdef UNDER_CE
+#define system_strdup _strdup
 #else
-  struct timeval timeout;
-  timeout.tv_sec = ms / 1000L;
-  ms = ms % 1000L;
-  timeout.tv_usec = (int)ms * 1000;
-  select(0, NULL,  NULL, NULL, &timeout);
+#define system_strdup strdup
 #endif
-}
+
+#if defined(_MSC_VER) && defined(_DLL)
+#  pragma warning(push)
+#  pragma warning(disable:4232) /* MSVC extension, dllimport identity */
+#endif
+
+curl_malloc_callback Curl_cmalloc = (curl_malloc_callback)malloc;
+curl_free_callback Curl_cfree = (curl_free_callback)free;
+curl_realloc_callback Curl_crealloc = (curl_realloc_callback)realloc;
+curl_strdup_callback Curl_cstrdup = (curl_strdup_callback)system_strdup;
+curl_calloc_callback Curl_ccalloc = (curl_calloc_callback)calloc;
+#if defined(_WIN32) && defined(UNICODE)
+curl_wcsdup_callback Curl_cwcsdup = NULL; /* not used in test code */
+#endif
+
+#if defined(_MSC_VER) && defined(_DLL)
+#  pragma warning(pop)
+#endif

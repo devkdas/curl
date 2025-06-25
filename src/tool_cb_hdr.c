@@ -27,8 +27,6 @@
 #include <unistd.h>
 #endif
 
-#include <curlx.h>
-
 #include "tool_cfgable.h"
 #include "tool_doswin.h"
 #include "tool_msgs.h"
@@ -37,7 +35,7 @@
 #include "tool_operate.h"
 #include "tool_libinfo.h"
 
-#include <memdebug.h> /* keep this as LAST include */
+#include "memdebug.h" /* keep this as LAST include */
 
 static char *parse_filename(const char *ptr, size_t len);
 
