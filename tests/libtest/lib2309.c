@@ -21,8 +21,7 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "test.h"
-#include "testtrace.h"
+#include "first.h"
 
 static size_t cb_ignore(char *buffer, size_t size, size_t nmemb, void *userp)
 {

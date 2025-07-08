@@ -244,33 +244,17 @@ static void h3_data_done(struct Curl_cfilter *cf, struct Curl_easy *data)
 static void drain_stream_from_other_thread(struct Curl_easy *data,
                                            struct h3_stream_ctx *stream)
 {
-  unsigned char bits;
-
-  /* risky */
-  bits = CURL_CSELECT_IN;
-  if(stream && !stream->upload_done)
-    bits |= CURL_CSELECT_OUT;
-  if(data->state.select_bits != bits) {
-    data->state.select_bits = bits;
-    /* cannot expire from other thread */
-  }
+  (void)data;
+  (void)stream;
+  /* cannot expire from other thread.
+     here is the disconnect between msh3 and curl */
 }
 
 static void h3_drain_stream(struct Curl_cfilter *cf,
                             struct Curl_easy *data)
 {
-  struct cf_msh3_ctx *ctx = cf->ctx;
-  struct h3_stream_ctx *stream = H3_STREAM_CTX(ctx, data);
-  unsigned char bits;
-
   (void)cf;
-  bits = CURL_CSELECT_IN;
-  if(stream && !stream->upload_done)
-    bits |= CURL_CSELECT_OUT;
-  if(data->state.select_bits != bits) {
-    data->state.select_bits = bits;
-    Curl_expire(data, 0, EXPIRE_RUN_NOW);
-  }
+  Curl_multi_mark_dirty(data);
 }
 
 static const MSH3_CONNECTION_IF msh3_conn_if = {
@@ -361,17 +345,16 @@ static CURLcode write_resp_raw(struct Curl_easy *data,
   struct cf_msh3_ctx *ctx = h3_get_msh3_ctx(data);
   struct h3_stream_ctx *stream = H3_STREAM_CTX(ctx, data);
   CURLcode result = CURLE_OK;
-  ssize_t nwritten;
+  size_t nwritten;
 
   if(!stream)
     return CURLE_RECV_ERROR;
 
-  nwritten = Curl_bufq_write(&stream->recvbuf, mem, memlen, &result);
-  if(nwritten < 0) {
+  result = Curl_bufq_write(&stream->recvbuf, mem, memlen, &nwritten);
+  if(result)
     return result;
-  }
 
-  if((size_t)nwritten < memlen) {
+  if(nwritten < memlen) {
     /* This MUST not happen. Our recbuf is dimensioned to hold the
      * full max_stream_window and then some for this very reason. */
     DEBUGASSERT(0);
@@ -569,7 +552,6 @@ static CURLcode cf_msh3_recv(struct Curl_cfilter *cf, struct Curl_easy *data,
 {
   struct cf_msh3_ctx *ctx = cf->ctx;
   struct h3_stream_ctx *stream = H3_STREAM_CTX(ctx, data);
-  ssize_t nread = -1;
   struct cf_call_data save;
   CURLcode result = CURLE_OK;
 
@@ -588,13 +570,11 @@ static CURLcode cf_msh3_recv(struct Curl_cfilter *cf, struct Curl_easy *data,
   }
 
   if(!Curl_bufq_is_empty(&stream->recvbuf)) {
-    nread = Curl_bufq_read(&stream->recvbuf,
-                           (unsigned char *)buf, len, &result);
-    CURL_TRC_CF(data, cf, "read recvbuf(len=%zu) -> %zd, %d",
-                len, nread, result);
-    if(nread < 0)
+    result = Curl_bufq_cread(&stream->recvbuf, buf, len, pnread);
+    CURL_TRC_CF(data, cf, "read recvbuf(len=%zu) -> %d, %zu",
+                len, result, *pnread);
+    if(result)
       goto out;
-    *pnread = (size_t)nread;
     if(stream->closed)
       h3_drain_stream(cf, data);
   }
@@ -955,8 +935,6 @@ static void cf_msh3_close(struct Curl_cfilter *cf, struct Curl_easy *data)
                     "conn->sock[], discarding", (int)ctx->sock[SP_LOCAL]);
         ctx->sock[SP_LOCAL] = CURL_SOCKET_BAD;
       }
-      if(cf->sockindex == FIRSTSOCKET)
-        cf->conn->remote_addr = NULL;
     }
     if(ctx->sock[SP_LOCAL] != CURL_SOCKET_BAD) {
       sclose(ctx->sock[SP_LOCAL]);
@@ -1040,7 +1018,6 @@ struct Curl_cftype Curl_cft_http3 = {
   cf_msh3_connect,
   cf_msh3_close,
   Curl_cf_def_shutdown,
-  Curl_cf_def_get_host,
   cf_msh3_adjust_pollset,
   cf_msh3_data_pending,
   cf_msh3_send,

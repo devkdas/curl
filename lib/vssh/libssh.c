@@ -58,7 +58,6 @@
 #include "../speedcheck.h"
 #include "../getinfo.h"
 #include "../strdup.h"
-#include "../strcase.h"
 #include "../vtls/vtls.h"
 #include "../cfilters.h"
 #include "../connect.h"
@@ -70,9 +69,6 @@
 #include "../curlx/warnless.h"
 #include "curl_path.h"
 
-#ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
-#endif
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -366,7 +362,7 @@ static int myssh_is_known(struct Curl_easy *data, struct ssh_conn *sshc)
 
     infof(data, "SSH MD5 fingerprint: %s", md5buffer);
 
-    if(!strcasecompare(md5buffer, pubkey_md5)) {
+    if(!curl_strequal(md5buffer, pubkey_md5)) {
       failf(data,
             "Denied establishing ssh session: mismatch md5 fingerprint. "
             "Remote %s is not equal to %s", md5buffer, pubkey_md5);
@@ -652,7 +648,7 @@ static int myssh_in_SFTP_READDIR(struct Curl_easy *data,
     myssh_to(data, sshc, SSH_SFTP_READDIR_DONE);
   }
   else {
-    failf(data, "Could not open remote file for reading: %s",
+    failf(data, "Could not open remote directory for reading: %s",
           ssh_get_error(sshc->ssh_session));
     return myssh_to_SFTP_CLOSE(data, sshc);
   }
@@ -667,7 +663,7 @@ static int myssh_in_SFTP_READDIR_LINK(struct Curl_easy *data,
 
   sshc->readdir_link_attrs = sftp_lstat(sshc->sftp_session,
                                         sshc->readdir_linkPath);
-  if(sshc->readdir_link_attrs == 0) {
+  if(!sshc->readdir_link_attrs) {
     failf(data, "Could not read symlink for reading: %s",
           ssh_get_error(sshc->ssh_session));
     return myssh_to_SFTP_CLOSE(data, sshc);
@@ -676,7 +672,7 @@ static int myssh_in_SFTP_READDIR_LINK(struct Curl_easy *data,
   if(!sshc->readdir_link_attrs->name) {
     sshc->readdir_tmp = sftp_readlink(sshc->sftp_session,
                                       sshc->readdir_linkPath);
-    if(!sshc->readdir_filename)
+    if(!sshc->readdir_tmp)
       sshc->readdir_len = 0;
     else
       sshc->readdir_len = strlen(sshc->readdir_tmp);
@@ -693,6 +689,14 @@ static int myssh_in_SFTP_READDIR_LINK(struct Curl_easy *data,
 
   if(curlx_dyn_addf(&sshc->readdir_buf, " -> %s",
                     sshc->readdir_filename)) {
+    /* Not using:
+     * return myssh_to_SFTP_CLOSE(data, sshc);
+     *
+     * as that assumes an sftp related error while
+     * assigning sshc->actualcode whereas the current
+     * error is curlx_dyn_addf() related.
+     */
+    myssh_to(data, sshc, SSH_SFTP_CLOSE);
     sshc->actualcode = CURLE_OUT_OF_MEMORY;
     return SSH_ERROR;
   }
@@ -960,7 +964,7 @@ static int myssh_in_AUTH_PKEY_INIT(struct Curl_easy *data,
   int rc;
   if(!(data->set.ssh_auth_types & CURLSSH_AUTH_PUBLICKEY)) {
     rc = myssh_to_GSSAPI_AUTH(data, sshc);
-    return 0;
+    return rc;
   }
 
   /* Two choices, (1) private key was given on CMD,
@@ -1256,15 +1260,9 @@ static int myssh_in_UPLOAD_INIT(struct Curl_easy *data,
      figure out a "real" bitmask */
   sshc->orig_waitfor = data->req.keepon;
 
-  /* we want to use the _sending_ function even when the socket turns
-     out readable as the underlying libssh sftp send function will deal
-     with both accordingly */
-  data->state.select_bits = CURL_CSELECT_OUT;
-
   /* since we do not really wait for anything at this point, we want the
-     state machine to move on as soon as possible so we set a very short
-     timeout here */
-  Curl_expire(data, 0, EXPIRE_RUN_NOW);
+     state machine to move on as soon as possible so we mark this as dirty */
+  Curl_multi_mark_dirty(data);
 #if LIBSSH_VERSION_INT > SSH_VERSION_INT(0, 11, 0)
   sshc->sftp_send_state = 0;
 #endif
@@ -1430,11 +1428,6 @@ static int myssh_in_SFTP_DOWNLOAD_STAT(struct Curl_easy *data,
   /* not set by Curl_xfer_setup to preserve keepon bits */
   data->conn->writesockfd = data->conn->sockfd;
 
-  /* we want to use the _receiving_ function even when the socket turns
-     out writableable as the underlying libssh recv function will deal
-     with both accordingly */
-  data->state.select_bits = CURL_CSELECT_IN;
-
   sshc->sftp_recv_state = 0;
   myssh_to(data, sshc, SSH_STOP);
 
@@ -1598,7 +1591,7 @@ static int myssh_in_SFTP_QUOTE(struct Curl_easy *data,
     sshc->acceptfail = TRUE;
   }
 
-  if(strcasecompare("pwd", cmd)) {
+  if(curl_strequal("pwd", cmd)) {
     /* output debug output if that is requested */
     char *tmp = aprintf("257 \"%s\" is current directory.\n", sshp->path);
     if(!tmp) {
@@ -2258,11 +2251,6 @@ static CURLcode myssh_statemach_act(struct Curl_easy *data,
          figure out a "real" bitmask */
       sshc->orig_waitfor = data->req.keepon;
 
-      /* we want to use the _sending_ function even when the socket turns
-         out readable as the underlying libssh scp send function will deal
-         with both accordingly */
-      data->state.select_bits = CURL_CSELECT_OUT;
-
       myssh_to(data, sshc, SSH_STOP);
 
       break;
@@ -2297,11 +2285,6 @@ static CURLcode myssh_statemach_act(struct Curl_easy *data,
 
         /* not set by Curl_xfer_setup to preserve keepon bits */
         conn->writesockfd = conn->sockfd;
-
-        /* we want to use the _receiving_ function even when the socket turns
-           out writableable as the underlying libssh recv function will deal
-           with both accordingly */
-        data->state.select_bits = CURL_CSELECT_IN;
 
         myssh_to(data, sshc, SSH_STOP);
         break;

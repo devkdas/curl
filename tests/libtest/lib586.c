@@ -21,7 +21,8 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "test.h"
+#include "first.h"
+
 #include "memdebug.h"
 
 #define THREADS 2

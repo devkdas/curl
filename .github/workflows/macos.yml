@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: curl
 
-name: macOS
+name: 'macOS'
 
 'on':
   push:
@@ -13,6 +13,7 @@ name: macOS
       - '**/*.md'
       - '.circleci/**'
       - 'appveyor.*'
+      - 'Dockerfile'
       - 'packages/**'
       - 'plan9/**'
       - 'projects/**'
@@ -24,6 +25,7 @@ name: macOS
       - '**/*.md'
       - '.circleci/**'
       - 'appveyor.*'
+      - 'Dockerfile'
       - 'packages/**'
       - 'plan9/**'
       - 'projects/**'
@@ -64,7 +66,7 @@ jobs:
       matrix:
         compiler: [clang, llvm@15, gcc-12]
         build:
-          # automake
+          # autotools
           - name: '!ssl !debug brotli zstd'
             compiler: clang
             install: brotli zstd
@@ -133,7 +135,7 @@ jobs:
             generate: -DOPENSSL_ROOT_DIR=/opt/homebrew/opt/quictls -DBUILD_STATIC_LIBS=ON -DCURL_USE_LIBSSH2=OFF -DCURL_USE_LIBSSH=ON
           - name: 'LibreSSL !ldap heimdal c-ares +examples'
             install: libressl heimdal
-            generate: -DOPENSSL_ROOT_DIR=/opt/homebrew/opt/libressl -DENABLE_ARES=ON -DCURL_USE_GSSAPI=ON -DGSS_ROOT_DIR=/opt/homebrew/opt/heimdal -DCURL_DISABLE_LDAP=ON
+            generate: -DENABLE_DEBUG=ON -DOPENSSL_ROOT_DIR=/opt/homebrew/opt/libressl -DENABLE_ARES=ON -DCURL_USE_GSSAPI=ON -DGSS_ROOT_DIR=/opt/homebrew/opt/heimdal -DCURL_DISABLE_LDAP=ON
           - name: 'wolfSSL !ldap brotli zstd'
             install: brotli wolfssl zstd
             install_steps: pytest
@@ -143,7 +145,7 @@ jobs:
             generate: -DCURL_USE_MBEDTLS=ON -DLDAP_INCLUDE_DIR=/opt/homebrew/opt/openldap/include -DLDAP_LIBRARY=/opt/homebrew/opt/openldap/lib/libldap.dylib -DLDAP_LBER_LIBRARY=/opt/homebrew/opt/openldap/lib/liblber.dylib
           - name: 'GnuTLS !ldap krb5'
             install: gnutls nettle krb5
-            generate: -DCURL_USE_GNUTLS=ON -DCURL_USE_OPENSSL=OFF -DCURL_USE_GSSAPI=ON -DGSS_ROOT_DIR=/opt/homebrew/opt/krb5 -DCURL_DISABLE_LDAP=ON -DUSE_SSLS_EXPORT=ON
+            generate: -DENABLE_DEBUG=ON -DCURL_USE_GNUTLS=ON -DCURL_USE_OPENSSL=OFF -DCURL_USE_GSSAPI=ON -DGSS_ROOT_DIR=/opt/homebrew/opt/krb5 -DCURL_DISABLE_LDAP=ON -DUSE_SSLS_EXPORT=ON
           - name: 'OpenSSL torture !FTP'
             generate: -DENABLE_DEBUG=ON -DBUILD_SHARED_LIBS=OFF -DENABLE_THREADED_RESOLVER=OFF -DOPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl
             tflags: -t --shallow=25 !FTP
@@ -238,7 +240,7 @@ jobs:
                 -DCMAKE_INSTALL_PREFIX="$HOME"/curl-install \
                 -DCMAKE_UNITY_BUILD=ON -DCURL_WERROR=ON \
                 -DCMAKE_OSX_SYSROOT="${sysroot}" \
-                -DCMAKE_C_COMPILER_TARGET="$(uname -m | sed 's/arm64/aarch64/')-apple-darwin$(uname -r)" \
+                -DCMAKE_C_COMPILER_TARGET="$(uname -m | sed 's/arm64/aarch64e/')-apple-darwin$(uname -r)" \
                 ${MATRIX_GENERATE} ${options}
             done
             if [ -d bld_chkprefill ] && ! diff -u bld/lib/curl_config.h bld_chkprefill/lib/curl_config.h; then
@@ -460,7 +462,7 @@ jobs:
             cmake -B bld -G Ninja -D_CURL_PREFILL=ON \
               -DCMAKE_UNITY_BUILD=ON -DCURL_WERROR=ON \
               -DCMAKE_OSX_SYSROOT="${sysroot}" \
-              -DCMAKE_C_COMPILER_TARGET="$(uname -m | sed 's/arm64/aarch64/')-apple-darwin$(uname -r)" \
+              -DCMAKE_C_COMPILER_TARGET="$(uname -m | sed 's/arm64/aarch64e/')-apple-darwin$(uname -r)" \
               -DCMAKE_IGNORE_PREFIX_PATH="$(brew --prefix)" \
               -DBUILD_LIBCURL_DOCS=OFF -DBUILD_MISC_DOCS=OFF -DENABLE_CURL_MANUAL=OFF \
               -DCURL_USE_OPENSSL=ON \

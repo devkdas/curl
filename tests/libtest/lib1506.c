@@ -21,10 +21,8 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "test.h"
+#include "first.h"
 
-#include "testutil.h"
-#include "warnless.h"
 #include "memdebug.h"
 
 static CURLcode test_lib1506(char *URL)
@@ -114,7 +112,7 @@ static CURLcode test_lib1506(char *URL)
 
       abort_on_test_timeout();
     }
-    wait_ms(1); /* to ensure different end times */
+    curlx_wait_ms(1); /* to ensure different end times */
   }
 
 test_cleanup:

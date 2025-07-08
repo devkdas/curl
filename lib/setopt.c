@@ -240,6 +240,7 @@ static CURLcode protocol2num(const char *str, curl_prot_t *val)
   return CURLE_OK;
 }
 
+#if !defined(CURL_DISABLE_HTTP) || !defined(CURL_DISABLE_PROXY)
 static CURLcode httpauth(struct Curl_easy *data, bool proxy,
                          unsigned long auth)
 {
@@ -284,6 +285,7 @@ static CURLcode httpauth(struct Curl_easy *data, bool proxy,
     data->set.httpauth = auth;
   return CURLE_OK;
 }
+#endif /* !CURL_DISABLE_HTTP || !CURL_DISABLE_PROXY */
 
 #ifndef CURL_DISABLE_HTTP
 static CURLcode setopt_HTTP_VERSION(struct Curl_easy *data, long arg)
@@ -1879,23 +1881,23 @@ static CURLcode setopt_cptr(struct Curl_easy *data, CURLoption option,
     if(!ptr)
       break;
 
-    if(strcasecompare(ptr, "ALL")) {
+    if(curl_strequal(ptr, "ALL")) {
       /* clear all cookies */
       Curl_share_lock(data, CURL_LOCK_DATA_COOKIE, CURL_LOCK_ACCESS_SINGLE);
       Curl_cookie_clearall(data->cookies);
       Curl_share_unlock(data, CURL_LOCK_DATA_COOKIE);
     }
-    else if(strcasecompare(ptr, "SESS")) {
+    else if(curl_strequal(ptr, "SESS")) {
       /* clear session cookies */
       Curl_share_lock(data, CURL_LOCK_DATA_COOKIE, CURL_LOCK_ACCESS_SINGLE);
       Curl_cookie_clearsess(data->cookies);
       Curl_share_unlock(data, CURL_LOCK_DATA_COOKIE);
     }
-    else if(strcasecompare(ptr, "FLUSH")) {
+    else if(curl_strequal(ptr, "FLUSH")) {
       /* flush cookies to file, takes care of the locking */
       Curl_flush_cookies(data, FALSE);
     }
-    else if(strcasecompare(ptr, "RELOAD")) {
+    else if(curl_strequal(ptr, "RELOAD")) {
       /* reload cookies from file */
       Curl_cookie_loadfiles(data);
       break;
@@ -2559,12 +2561,12 @@ static CURLcode setopt_cptr(struct Curl_easy *data, CURLoption option,
     return Curl_setstropt(&data->set.str[STRING_TLSAUTH_PASSWORD_PROXY], ptr);
 #endif
   case CURLOPT_TLSAUTH_TYPE:
-    if(ptr && !strcasecompare(ptr, "SRP"))
+    if(ptr && !curl_strequal(ptr, "SRP"))
       return CURLE_BAD_FUNCTION_ARGUMENT;
     break;
 #ifndef CURL_DISABLE_PROXY
   case CURLOPT_PROXY_TLSAUTH_TYPE:
-    if(ptr && !strcasecompare(ptr, "SRP"))
+    if(ptr && !curl_strequal(ptr, "SRP"))
       return CURLE_BAD_FUNCTION_ARGUMENT;
     break;
 #endif

@@ -78,7 +78,6 @@
 #include "vquic/vquic.h" /* for quic cfilters */
 #include "http_proxy.h"
 #include "socks.h"
-#include "strcase.h"
 
 /* The last 3 #include files should be in this order */
 #include "curl_printf.h"
@@ -90,15 +89,15 @@
 enum alpnid Curl_alpn2alpnid(const char *name, size_t len)
 {
   if(len == 2) {
-    if(strncasecompare(name, "h1", 2))
+    if(curl_strnequal(name, "h1", 2))
       return ALPN_h1;
-    if(strncasecompare(name, "h2", 2))
+    if(curl_strnequal(name, "h2", 2))
       return ALPN_h2;
-    if(strncasecompare(name, "h3", 2))
+    if(curl_strnequal(name, "h3", 2))
       return ALPN_h3;
   }
   else if(len == 8) {
-    if(strncasecompare(name, "http/1.1", 8))
+    if(curl_strnequal(name, "http/1.1", 8))
       return ALPN_h1;
   }
   return ALPN_none; /* unknown, probably rubbish input */
@@ -684,7 +683,7 @@ evaluate:
         /* next attempt was started */
         CURL_TRC_CF(data, cf, "%s trying next", baller->name);
         ++ongoing;
-        Curl_expire(data, 0, EXPIRE_RUN_NOW);
+        Curl_multi_mark_dirty(data);
       }
     }
   }
@@ -995,11 +994,11 @@ static CURLcode cf_he_connect(struct Curl_cfilter *cf,
           struct ip_quadruple ipquad;
           int is_ipv6;
           if(!Curl_conn_cf_get_ip_info(cf->next, data, &is_ipv6, &ipquad)) {
-            const char *host, *disphost;
+            const char *host;
             int port;
-            cf->next->cft->get_host(cf->next, data, &host, &disphost, &port);
+            Curl_conn_get_current_host(data, cf->sockindex, &host, &port);
             CURL_TRC_CF(data, cf, "Connected to %s (%s) port %u",
-                        disphost, ipquad.remote_ip, ipquad.remote_port);
+                        host, ipquad.remote_ip, ipquad.remote_port);
           }
         }
         data->info.numconnects++; /* to track the # of connections made */
@@ -1136,7 +1135,6 @@ struct Curl_cftype Curl_cft_happy_eyeballs = {
   cf_he_connect,
   cf_he_close,
   cf_he_shutdown,
-  Curl_cf_def_get_host,
   cf_he_adjust_pollset,
   cf_he_data_pending,
   Curl_cf_def_send,
@@ -1400,7 +1398,6 @@ struct Curl_cftype Curl_cft_setup = {
   cf_setup_connect,
   cf_setup_close,
   Curl_cf_def_shutdown,
-  Curl_cf_def_get_host,
   Curl_cf_def_adjust_pollset,
   Curl_cf_def_data_pending,
   Curl_cf_def_send,

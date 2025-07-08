@@ -36,10 +36,7 @@
    the default TEST_HANG_TIMEOUT to avoid issues when running on overloaded
    CI machines. */
 
-#include "test.h"
-#include "testutil.h"
-
-#include <sys/stat.h>
+#include "first.h"
 
 static CURLcode test_lib1592(char *URL)
 {

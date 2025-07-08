@@ -67,19 +67,6 @@ CURLcode Curl_cf_def_shutdown(struct Curl_cfilter *cf,
 static void conn_report_connect_stats(struct Curl_easy *data,
                                       struct connectdata *conn);
 
-void Curl_cf_def_get_host(struct Curl_cfilter *cf, struct Curl_easy *data,
-                          const char **phost, const char **pdisplay_host,
-                          int *pport)
-{
-  if(cf->next)
-    cf->next->cft->get_host(cf->next, data, phost, pdisplay_host, pport);
-  else {
-    *phost = cf->conn->host.name;
-    *pdisplay_host = cf->conn->host.dispname;
-    *pport = cf->conn->primary.remote_port;
-  }
-}
-
 void Curl_cf_def_adjust_pollset(struct Curl_cfilter *cf,
                                  struct Curl_easy *data,
                                  struct easy_pollset *ps)
@@ -272,6 +259,66 @@ CURLcode Curl_cf_send(struct Curl_easy *data, int num,
   DEBUGASSERT(0);
   *pnwritten = 0;
   return CURLE_FAILED_INIT;
+}
+
+struct cf_io_ctx {
+  struct Curl_easy *data;
+  struct Curl_cfilter *cf;
+};
+
+static CURLcode cf_bufq_reader(void *writer_ctx,
+                               unsigned char *buf, size_t blen,
+                               size_t *pnread)
+{
+  struct cf_io_ctx *io = writer_ctx;
+  return Curl_conn_cf_recv(io->cf, io->data, (char *)buf, blen, pnread);
+}
+
+CURLcode Curl_cf_recv_bufq(struct Curl_cfilter *cf,
+                           struct Curl_easy *data,
+                           struct bufq *bufq,
+                           size_t maxlen,
+                           size_t *pnread)
+{
+  struct cf_io_ctx io;
+
+  if(!cf || !data) {
+    *pnread = 0;
+    return CURLE_BAD_FUNCTION_ARGUMENT;
+  }
+  io.data = data;
+  io.cf = cf;
+  return Curl_bufq_sipn(bufq, maxlen, cf_bufq_reader, &io, pnread);
+}
+
+static CURLcode cf_bufq_writer(void *writer_ctx,
+                               const unsigned char *buf, size_t buflen,
+                               size_t *pnwritten)
+{
+  struct cf_io_ctx *io = writer_ctx;
+  return Curl_conn_cf_send(io->cf, io->data, (const char *)buf,
+                           buflen, FALSE, pnwritten);
+}
+
+CURLcode Curl_cf_send_bufq(struct Curl_cfilter *cf,
+                           struct Curl_easy *data,
+                           struct bufq *bufq,
+                           const unsigned char *buf, size_t blen,
+                           size_t *pnwritten)
+{
+  struct cf_io_ctx io;
+
+  if(!cf || !data) {
+    *pnwritten = 0;
+    return CURLE_BAD_FUNCTION_ARGUMENT;
+  }
+  io.data = data;
+  io.cf = cf;
+  if(buf && blen)
+    return Curl_bufq_write_pass(bufq, buf, blen, cf_bufq_writer, &io,
+                                pnwritten);
+  else
+    return Curl_bufq_pass(bufq, cf_bufq_writer, &io, pnwritten);
 }
 
 CURLcode Curl_cf_create(struct Curl_cfilter **pcf,
@@ -533,6 +580,19 @@ bool Curl_conn_is_ssl(struct connectdata *conn, int sockindex)
   return conn ? Curl_conn_cf_is_ssl(conn->cfilter[sockindex]) : FALSE;
 }
 
+bool Curl_conn_get_ssl_info(struct Curl_easy *data,
+                            struct connectdata *conn, int sockindex,
+                            struct curl_tlssessioninfo *info)
+{
+  if(Curl_conn_is_ssl(conn, sockindex)) {
+    struct Curl_cfilter *cf = conn->cfilter[sockindex];
+    CURLcode result = cf ? cf->cft->query(cf, data, CF_QUERY_SSL_INFO,
+                               NULL, (void *)info) : CURLE_UNKNOWN_OPTION;
+    return !result;
+  }
+  return FALSE;
+}
+
 bool Curl_conn_is_multiplex(struct connectdata *conn, int sockindex)
 {
   struct Curl_cfilter *cf = conn ? conn->cfilter[sockindex] : NULL;
@@ -670,24 +730,28 @@ int Curl_conn_cf_poll(struct Curl_cfilter *cf,
   return Curl_poll(pfds, npfds, timeout_ms);
 }
 
-void Curl_conn_get_host(struct Curl_easy *data, int sockindex,
-                        const char **phost, const char **pdisplay_host,
-                        int *pport)
+void Curl_conn_get_current_host(struct Curl_easy *data, int sockindex,
+                                const char **phost, int *pport)
 {
-  struct Curl_cfilter *cf;
+  struct Curl_cfilter *cf, *cf_proxy = NULL;
 
   DEBUGASSERT(data->conn);
   cf = data->conn->cfilter[sockindex];
-  if(cf) {
-    cf->cft->get_host(cf, data, phost, pdisplay_host, pport);
+  /* Find the "lowest" tunneling proxy filter that has not connected yet. */
+  while(cf && !cf->connected) {
+    if((cf->cft->flags & (CF_TYPE_IP_CONNECT|CF_TYPE_PROXY)) ==
+       (CF_TYPE_IP_CONNECT|CF_TYPE_PROXY))
+       cf_proxy = cf;
+    cf = cf->next;
   }
-  else {
-    /* Some filter ask during shutdown for this, mainly for debugging
-     * purposes. We hand out the defaults, however this is not always
-     * accurate, as the connection might be tunneled, etc. But all that
-     * state is already gone here. */
+  /* cf_proxy (!= NULL) is not connected yet. It is talking
+   * to an interim host and any authentication or other things apply
+   * to this interim host and port. */
+  if(!cf_proxy || cf_proxy->cft->query(cf_proxy, data, CF_QUERY_HOST_PORT,
+                                       pport, CURL_UNCONST(phost))) {
+    /* Everything connected or query unsuccessful, the overall
+     * connection's destination is the answer */
     *phost = data->conn->host.name;
-    *pdisplay_host = data->conn->host.dispname;
     *pport = data->conn->remote_port;
   }
 }
@@ -730,6 +794,17 @@ curl_socket_t Curl_conn_cf_get_socket(struct Curl_cfilter *cf,
   return CURL_SOCKET_BAD;
 }
 
+static const struct Curl_sockaddr_ex *
+cf_get_remote_addr(struct Curl_cfilter *cf, struct Curl_easy *data)
+{
+  const struct Curl_sockaddr_ex *remote_addr = NULL;
+  if(cf &&
+     !cf->cft->query(cf, data, CF_QUERY_REMOTE_ADDR, NULL,
+                     CURL_UNCONST(&remote_addr)))
+    return remote_addr;
+  return NULL;
+}
+
 CURLcode Curl_conn_cf_get_ip_info(struct Curl_cfilter *cf,
                                   struct Curl_easy *data,
                                   int *is_ipv6, struct ip_quadruple *ipquad)
@@ -750,6 +825,13 @@ curl_socket_t Curl_conn_get_socket(struct Curl_easy *data, int sockindex)
   if(cf && !cf->connected)
     return Curl_conn_cf_get_socket(cf, data);
   return data->conn ? data->conn->sock[sockindex] : CURL_SOCKET_BAD;
+}
+
+const struct Curl_sockaddr_ex *
+Curl_conn_get_remote_addr(struct Curl_easy *data, int sockindex)
+{
+  struct Curl_cfilter *cf = data->conn ? data->conn->cfilter[sockindex] : NULL;
+  return cf ? cf_get_remote_addr(cf, data) : NULL;
 }
 
 void Curl_conn_forget_socket(struct Curl_easy *data, int sockindex)

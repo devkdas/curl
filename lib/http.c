@@ -259,7 +259,7 @@ char *Curl_checkProxyheaders(struct Curl_easy *data,
   for(head = (conn->bits.proxy && data->set.sep_headers) ?
         data->set.proxyheaders : data->set.headers;
       head; head = head->next) {
-    if(strncasecompare(head->data, thisheader, thislen) &&
+    if(curl_strnequal(head->data, thisheader, thislen) &&
        Curl_headersep(head->data[thislen]))
       return head->data;
   }
@@ -862,7 +862,7 @@ static bool authcmp(const char *auth, const char *line)
 {
   /* the auth string must not have an alnum following */
   size_t n = strlen(auth);
-  return strncasecompare(auth, line, n) && !ISALNUM(line[n]);
+  return curl_strnequal(auth, line, n) && !ISALNUM(line[n]);
 }
 #endif
 
@@ -1482,7 +1482,7 @@ Curl_compareheader(const char *headerline, /* line to check */
   DEBUGASSERT(header);
   DEBUGASSERT(content);
 
-  if(!strncasecompare(headerline, header, hlen))
+  if(!curl_strnequal(headerline, header, hlen))
     return FALSE; /* does not start with header */
 
   /* pass the header */
@@ -1497,7 +1497,7 @@ Curl_compareheader(const char *headerline, /* line to check */
     size_t len;
     p = curlx_str(&val);
     for(len = curlx_strlen(&val); len >= curlx_strlen(&val); len--, p++) {
-      if(strncasecompare(p, content, clen))
+      if(curl_strnequal(p, content, clen))
         return TRUE; /* match! */
     }
   }
@@ -1893,7 +1893,7 @@ static CURLcode http_host(struct Curl_easy *data, struct connectdata *conn)
 
   ptr = Curl_checkheaders(data, STRCONST("Host"));
   if(ptr && (!data->state.this_is_a_follow ||
-             strcasecompare(data->state.first_host, conn->host.name))) {
+             curl_strequal(data->state.first_host, conn->host.name))) {
 #if !defined(CURL_DISABLE_COOKIES)
     /* If we have a given custom Host: header, we extract the hostname in
        order to possibly use it for cookie reasons later on. We only allow the
@@ -1929,7 +1929,7 @@ static CURLcode http_host(struct Curl_easy *data, struct connectdata *conn)
     }
 #endif
 
-    if(!strcasecompare("Host:", ptr)) {
+    if(!curl_strequal("Host:", ptr)) {
       aptr->host = aprintf("Host:%s\r\n", &ptr[5]);
       if(!aptr->host)
         return CURLE_OUT_OF_MEMORY;
@@ -2005,7 +2005,7 @@ static CURLcode http_target(struct Curl_easy *data,
       return CURLE_OUT_OF_MEMORY;
     }
 
-    if(strcasecompare("http", data->state.up.scheme)) {
+    if(curl_strequal("http", data->state.up.scheme)) {
       /* when getting HTTP, we do not want the userinfo the URL */
       uc = curl_url_set(h, CURLUPART_USER, NULL, 0);
       if(uc) {
@@ -2034,7 +2034,7 @@ static CURLcode http_target(struct Curl_easy *data,
     if(result)
       return result;
 
-    if(strcasecompare("ftp", data->state.up.scheme)) {
+    if(curl_strequal("ftp", data->state.up.scheme)) {
       if(data->set.proxy_transfer_mode) {
         /* when doing ftp, append ;type=<a|i> if not present */
         char *type = strstr(path, ";type=");
@@ -2443,7 +2443,7 @@ static CURLcode http_cookies(struct Curl_easy *data,
         data->state.aptr.cookiehost : conn->host.name;
       const bool secure_context =
         conn->handler->protocol&(CURLPROTO_HTTPS|CURLPROTO_WSS) ||
-        strcasecompare("localhost", host) ||
+        curl_strequal("localhost", host) ||
         !strcmp(host, "127.0.0.1") ||
         !strcmp(host, "::1");
       Curl_share_lock(data, CURL_LOCK_DATA_COOKIE, CURL_LOCK_ACCESS_SINGLE);
@@ -3293,8 +3293,8 @@ static CURLcode http_header_r(struct Curl_easy *data,
         retry_after = date - current;
     }
     else
-      /* Try it as a decimal number */
-      curlx_str_number(&v, &retry_after, CURL_OFF_T_MAX);
+      /* Try it as a decimal number, ignore errors */
+      (void)curlx_str_number(&v, &retry_after, CURL_OFF_T_MAX);
     /* limit to 6 hours max. this is not documented so that it can be changed
        in the future if necessary. */
     if(retry_after > 21600)
@@ -3310,8 +3310,14 @@ static CURLcode http_header_r(struct Curl_easy *data,
 static CURLcode http_header_s(struct Curl_easy *data,
                               const char *hd, size_t hdlen)
 {
+#if !defined(CURL_DISABLE_COOKIES) || !defined(CURL_DISABLE_HSTS)
   struct connectdata *conn = data->conn;
   const char *v;
+#else
+  (void)data;
+  (void)hd;
+  (void)hdlen;
+#endif
 
 #if !defined(CURL_DISABLE_COOKIES)
   v = (data->cookies && data->state.cookie_engine) ?
@@ -3323,7 +3329,7 @@ static CURLcode http_header_s(struct Curl_easy *data,
       data->state.aptr.cookiehost : conn->host.name;
     const bool secure_context =
       conn->handler->protocol&(CURLPROTO_HTTPS|CURLPROTO_WSS) ||
-      strcasecompare("localhost", host) ||
+      curl_strequal("localhost", host) ||
       !strcmp(host, "127.0.0.1") ||
       !strcmp(host, "::1");
 
@@ -3956,9 +3962,8 @@ static CURLcode http_on_response(struct Curl_easy *data,
 out:
   if(last_hd) {
     /* if not written yet, write it now */
-    CURLcode r2 = http_write_header(data, last_hd, last_hd_len);
-    if(!result)
-      result = r2;
+    result = Curl_1st_err(
+      result, http_write_header(data, last_hd, last_hd_len));
   }
   return result;
 }
@@ -4580,7 +4585,7 @@ static bool h2_permissible_field(struct dynhds_entry *e)
     if(e->namelen < H2_NON_FIELD[i].namelen)
       return TRUE;
     if(e->namelen == H2_NON_FIELD[i].namelen &&
-       strcasecompare(H2_NON_FIELD[i].name, e->name))
+       curl_strequal(H2_NON_FIELD[i].name, e->name))
       return FALSE;
   }
   return TRUE;
@@ -4671,7 +4676,7 @@ CURLcode Curl_http_req_to_h2(struct dynhds *h2_headers,
     e = Curl_dynhds_getn(&req->headers, i);
     /* "TE" is special in that it is only permissible when it
      * has only value "trailers". RFC 9113 ch. 8.2.2 */
-    if(e->namelen == 2 && strcasecompare("TE", e->name)) {
+    if(e->namelen == 2 && curl_strequal("TE", e->name)) {
       if(http_TE_has_token(e->value, "trailers"))
         result = Curl_dynhds_add(h2_headers, e->name, e->namelen,
                                  "trailers", sizeof("trailers") - 1);

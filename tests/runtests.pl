@@ -545,10 +545,6 @@ sub checksystemfeatures {
             $curl =~ s/^(.*)(libcurl.*)/$1/g || die "Failure determining curl binary version";
 
             $libcurl = $2;
-            if($curl =~ /linux|bsd|solaris/) {
-                # system support LD_PRELOAD; may be disabled later
-                $feature{"ld_preload"} = 1;
-            }
             if($curl =~ /win32|Windows|windows|mingw(32|64)/) {
                 # This is a Windows MinGW build or native build, we need to use
                 # Windows-style path.
@@ -767,9 +763,6 @@ sub checksystemfeatures {
         close($conf);
     }
 
-    # allow this feature only if debug mode is disabled
-    $feature{"ld_preload"} = $feature{"ld_preload"} && !$feature{"Debug"};
-
     if($feature{"IPv6"}) {
         # client has IPv6 support
 
@@ -823,11 +816,6 @@ sub checksystemfeatures {
     }
     # 'socks' was once here but is now removed
 
-    $has_shared = `sh $CURLCONFIG --built-shared`;
-    chomp $has_shared;
-    $has_shared = $has_shared eq "yes";
-
-
     if($torture) {
         if(!$feature{"TrackMemory"}) {
             die "can't run torture tests since curl was built without ".
@@ -879,7 +867,7 @@ sub checksystemfeatures {
         $feature{"TrackMemory"} = 0;
     }
 
-    logmsg sprintf("* Env: %s%s%s%s%s", $valgrind?"Valgrind ":"",
+    logmsg sprintf("* Env: %s%s%s%s", $valgrind?"Valgrind ":"",
                    $run_duphandle?"test-duphandle ":"",
                    $run_event_based?"event-based ":"",
                    $nghttpx_h3);
@@ -1709,6 +1697,48 @@ sub singletest_check {
             }
             else {
                 $ok .= "m";
+            }
+            my @more=`$memanalyze -v "$logdir/$MEMDUMP"`;
+            my $allocs;
+            my $max;
+            for(@more) {
+                if(/^Allocations: (\d+)/) {
+                    $allocs = $1;
+                }
+                elsif(/^Maximum allocated: (\d+)/) {
+                    $max = $1;
+                }
+            }
+            my @limits = getpart("verify", "limits");
+            my $lim_allocs = 1000; # high default values
+            my $lim_max = 1000000;
+            for(@limits) {
+                if(/^Allocations: (\d+)/i) {
+                    $lim_allocs = $1;
+                }
+                elsif(/^Maximum allocated: (\d+)/i) {
+                    $lim_max = $1;
+                }
+            }
+            logmsg "did $allocs allocations, $lim_allocs allowed\n"
+                if($verbose);
+
+            logmsg "allocated $max maximum, $lim_max allowed\n"
+                if($verbose);
+
+            if($allocs > $lim_allocs) {
+                logmsg "\n** TOO MANY ALLOCS\n";
+                logmsg "$lim_allocs allocations allowed, did $allocs\n";
+                # timestamp test result verification end
+                $timevrfyend{$testnum} = Time::HiRes::time();
+                return -1;
+            }
+            if($max > $lim_max) {
+                logmsg "\n** TOO MUCH TOTAL ALLOCATION\n";
+                logmsg "$lim_max maximum allocation allowed, did $max\n";
+                # timestamp test result verification end
+                $timevrfyend{$testnum} = Time::HiRes::time();
+                return -1;
             }
         }
     }

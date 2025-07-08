@@ -164,7 +164,7 @@ static CURLUcode urlencode_str(struct dynbuf *o, const char *url,
     }
     else if((*iptr < ' ') || (*iptr >= 0x7f)) {
       unsigned char out[3]={'%'};
-      Curl_hexbyte(&out[1], *iptr, TRUE);
+      Curl_hexbyte(&out[1], *iptr);
       result = curlx_dyn_addn(o, out, 3);
     }
     else {
@@ -1427,7 +1427,7 @@ static CURLUcode urlget_url(const CURLU *u, char **part, unsigned int flags)
   bool depunyfy = (flags & CURLU_PUNY2IDN) ? 1 : 0;
   bool urlencode = (flags & CURLU_URLENCODE) ? 1 : 0;
   char portbuf[7];
-  if(u->scheme && strcasecompare("file", u->scheme)) {
+  if(u->scheme && curl_strequal("file", u->scheme)) {
     url = aprintf("file://%s%s%s%s%s",
                   u->path,
                   show_query ? "?": "",
@@ -1861,7 +1861,7 @@ CURLUcode curl_url_set(CURLU *u, CURLUPart what,
         }
         else {
           unsigned char out[3]={'%'};
-          Curl_hexbyte(&out[1], *i, TRUE);
+          Curl_hexbyte(&out[1], *i);
           result = curlx_dyn_addn(&enc, out, 3);
           if(result)
             return cc2cu(result);

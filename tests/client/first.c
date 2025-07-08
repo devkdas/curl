@@ -21,39 +21,32 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "tool_setup.h"
+#include "first.h"
 
-#ifdef HAVE_SYS_SELECT_H
-#  include <sys/select.h>
-#elif defined(HAVE_UNISTD_H)
-#  include <unistd.h>
-#endif
-
-#ifdef HAVE_POLL_H
-#  include <poll.h>
-#elif defined(HAVE_SYS_POLL_H)
-#  include <sys/poll.h>
-#endif
-
-#ifdef MSDOS
-#  include <dos.h>
-#endif
-
-#include "tool_sleep.h"
-
-#include <memdebug.h> /* keep this as LAST include */
-
-void tool_go_sleep(long ms)
+int main(int argc, char **argv)
 {
-#if defined(MSDOS)
-  delay(ms);
-#elif defined(_WIN32)
-  Sleep((DWORD)ms);
-#else
-  struct timeval timeout;
-  timeout.tv_sec = ms / 1000L;
-  ms = ms % 1000L;
-  timeout.tv_usec = (int)ms * 1000;
-  select(0, NULL,  NULL, NULL, &timeout);
-#endif
+  entry_func_t entry_func;
+  char *entry_name;
+  size_t tmp;
+
+  if(argc < 2) {
+    curl_mfprintf(stderr, "Pass clientname as first argument\n");
+    return 1;
+  }
+
+  entry_name = argv[1];
+  entry_func = NULL;
+  for(tmp = 0; s_entries[tmp].ptr; ++tmp) {
+    if(strcmp(entry_name, s_entries[tmp].name) == 0) {
+      entry_func = s_entries[tmp].ptr;
+      break;
+    }
+  }
+
+  if(!entry_func) {
+    curl_mfprintf(stderr, "Test '%s' not found.\n", entry_name);
+    return 99;
+  }
+
+  return entry_func(argc - 1, argv + 1);
 }

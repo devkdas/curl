@@ -21,6 +21,7 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
+#include "first.h"
 
 static size_t write_h2ue_cb(char *ptr, size_t size, size_t nmemb, void *opaque)
 {
@@ -42,14 +43,14 @@ static int test_h2_upgrade_extreme(int argc, char *argv[])
   int exitcode = 1;
 
   if(argc != 2) {
-    fprintf(stderr, "%s URL\n", argv[0]);
+    curl_mfprintf(stderr, "%s URL\n", argv[0]);
     return 2;
   }
 
   url = argv[1];
   multi = curl_multi_init();
   if(!multi) {
-    fprintf(stderr, "curl_multi_init failed\n");
+    curl_mfprintf(stderr, "curl_multi_init failed\n");
     goto cleanup;
   }
 
@@ -58,7 +59,7 @@ static int test_h2_upgrade_extreme(int argc, char *argv[])
     if(start_count) {
       easy = curl_easy_init();
       if(!easy) {
-        fprintf(stderr, "curl_easy_init failed\n");
+        curl_mfprintf(stderr, "curl_easy_init failed\n");
         goto cleanup;
       }
       curl_easy_setopt(easy, CURLOPT_VERBOSE, 1L);
@@ -80,8 +81,8 @@ static int test_h2_upgrade_extreme(int argc, char *argv[])
 
       mc = curl_multi_add_handle(multi, easy);
       if(mc != CURLM_OK) {
-        fprintf(stderr, "curl_multi_add_handle: %s\n",
-                curl_multi_strerror(mc));
+        curl_mfprintf(stderr, "curl_multi_add_handle: %s\n",
+                      curl_multi_strerror(mc));
         curl_easy_cleanup(easy);
         goto cleanup;
       }
@@ -90,16 +91,16 @@ static int test_h2_upgrade_extreme(int argc, char *argv[])
 
     mc = curl_multi_perform(multi, &running_handles);
     if(mc != CURLM_OK) {
-      fprintf(stderr, "curl_multi_perform: %s\n",
-              curl_multi_strerror(mc));
+      curl_mfprintf(stderr, "curl_multi_perform: %s\n",
+                    curl_multi_strerror(mc));
       goto cleanup;
     }
 
     if(running_handles) {
       mc = curl_multi_poll(multi, NULL, 0, 1000000, &numfds);
       if(mc != CURLM_OK) {
-        fprintf(stderr, "curl_multi_poll: %s\n",
-                curl_multi_strerror(mc));
+        curl_mfprintf(stderr, "curl_multi_poll: %s\n",
+                      curl_multi_strerror(mc));
         goto cleanup;
       }
     }
@@ -118,28 +119,29 @@ static int test_h2_upgrade_extreme(int argc, char *argv[])
            * re-using a connection */
         }
         else if(msg->data.result) {
-          fprintf(stderr, "transfer #%" CURL_FORMAT_CURL_OFF_T
-                  ": failed with %d\n", xfer_id, msg->data.result);
+          curl_mfprintf(stderr, "transfer #%" CURL_FORMAT_CURL_OFF_T
+                        ": failed with %d\n", xfer_id, msg->data.result);
           goto cleanup;
         }
         else if(status != 206) {
-          fprintf(stderr, "transfer #%" CURL_FORMAT_CURL_OFF_T
-                  ": wrong http status %ld (expected 206)\n", xfer_id, status);
+          curl_mfprintf(stderr, "transfer #%" CURL_FORMAT_CURL_OFF_T
+                        ": wrong http status %ld (expected 206)\n", xfer_id,
+                        status);
           goto cleanup;
         }
         curl_multi_remove_handle(multi, msg->easy_handle);
         curl_easy_cleanup(msg->easy_handle);
-        fprintf(stderr, "transfer #%" CURL_FORMAT_CURL_OFF_T" retiring "
-                "(%d now running)\n", xfer_id, running_handles);
+        curl_mfprintf(stderr, "transfer #%" CURL_FORMAT_CURL_OFF_T" retiring "
+                      "(%d now running)\n", xfer_id, running_handles);
       }
     }
 
-    fprintf(stderr, "running_handles=%d, yet_to_start=%d\n",
-            running_handles, start_count);
+    curl_mfprintf(stderr, "running_handles=%d, yet_to_start=%d\n",
+                  running_handles, start_count);
 
   } while(running_handles > 0 || start_count);
 
-  fprintf(stderr, "exiting\n");
+  curl_mfprintf(stderr, "exiting\n");
   exitcode = 0;
 
 cleanup:

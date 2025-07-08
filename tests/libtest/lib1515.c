@@ -28,10 +28,9 @@
  * (test1515) nor a dead connection is detected (test1616).
  */
 
-#include "test.h"
+#include "first.h"
+
 #include "testtrace.h"
-#include "testutil.h"
-#include "warnless.h"
 #include "memdebug.h"
 
 #define DNS_TIMEOUT 1L
@@ -134,7 +133,7 @@ static CURLcode test_lib1515(char *URL)
     }
 
     if(i < count)
-      sleep(DNS_TIMEOUT + 1);
+      curlx_wait_ms((DNS_TIMEOUT + 1) * 1000);
   }
 
 test_cleanup:

@@ -21,12 +21,8 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "test.h"
+#include "first.h"
 
-#include <limits.h>
-
-#include "testutil.h"
-#include "warnless.h"
 #include "memdebug.h"
 
 /*

@@ -23,9 +23,9 @@
  ***************************************************************************/
 #include "curlcheck.h"
 
-#include <curlx.h>
 #include "hash.h"
-#include <memdebug.h> /* LAST include file */
+
+#include "memdebug.h" /* LAST include file */
 
 static const size_t slots = 3;
 

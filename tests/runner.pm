@@ -670,17 +670,6 @@ sub singletest_setenv {
             if($content =~ /^=(.*)/) {
                 # assign it
                 $content = $1;
-
-                if($var =~ /^LD_PRELOAD/) {
-                    if(exe_ext('TOOL') && (exe_ext('TOOL') eq '.exe')) {
-                        logmsg "Skipping LD_PRELOAD due to lack of OS support\n" if($verbose);
-                        next;
-                    }
-                    if($feature{"Debug"} || !$has_shared) {
-                        logmsg "Skipping LD_PRELOAD due to no release shared build\n" if($verbose);
-                        next;
-                    }
-                }
                 $ENV{$var} = "$content";
                 logmsg "setenv $var = $content\n" if($verbose);
             }
@@ -688,7 +677,6 @@ sub singletest_setenv {
                 # remove it
                 delete $ENV{$var} if($ENV{$var});
             }
-
         }
     }
     if($proxy_address) {
@@ -750,11 +738,16 @@ sub singletest_prepare {
     unlink("$LOGDIR/$SERVERIN");
     unlink("$LOGDIR/$PROXYIN");
 
-    # if this section exists, it might be FTP server instructions:
-    my @ftpservercmd = getpart("reply", "servercmd");
-    push @ftpservercmd, "Testnum $testnum\n";
+    # if this section exists, it might be server instructions:
+    my @servercmd = getpart("reply", "servercmd");
+    push @servercmd, "Testnum $testnum\n";
     # write the instructions to file
-    writearray("$LOGDIR/$SERVERCMD", \@ftpservercmd);
+    writearray("$LOGDIR/$SERVERCMD", \@servercmd);
+
+    # if this section exists, it might be DNS instructions:
+    my @dnscmd = getpart("reply", "dns");
+    # write the instructions to file
+    writearray("$LOGDIR/$DNSCMD", \@dnscmd);
 
     # provide an environment variable
     $ENV{'CURL_TESTNUM'} = $testnum;

@@ -56,7 +56,6 @@
 #include "transfer.h"
 #include "curl_krb5.h"
 #include "curlx/warnless.h"
-#include "strcase.h"
 #include "strdup.h"
 
 /* The last 3 #include files should be in this order */
@@ -215,12 +214,14 @@ krb5_auth(void *app_data, struct Curl_easy *data, struct connectdata *conn)
   gss_ctx_id_t *context = app_data;
   struct gss_channel_bindings_struct chan;
   size_t base64_sz = 0;
-  struct sockaddr_in *remote_addr =
-    (struct sockaddr_in *)CURL_UNCONST(&conn->remote_addr->curl_sa_addr);
+  const struct Curl_sockaddr_ex *remote_addr =
+    Curl_conn_get_remote_addr(data, FIRSTSOCKET);
+  struct sockaddr_in *remote_in_addr = remote_addr ?
+    (struct sockaddr_in *)CURL_UNCONST(&remote_addr->curl_sa_addr) : NULL;
   char *stringp;
   struct ftp_conn *ftpc = Curl_conn_meta_get(conn, CURL_META_FTP_CONN);
 
-  if(!ftpc)
+  if(!ftpc || !remote_in_addr)
     return -2;
 
   if(getsockname(conn->sock[FIRSTSOCKET],
@@ -232,7 +233,7 @@ krb5_auth(void *app_data, struct Curl_easy *data, struct connectdata *conn)
   chan.initiator_address.value = &conn->local_addr.sin_addr.s_addr;
   chan.acceptor_addrtype = GSS_C_AF_INET;
   chan.acceptor_address.length = l - 4;
-  chan.acceptor_address.value = &remote_addr->sin_addr.s_addr;
+  chan.acceptor_address.value = &remote_in_addr->sin_addr.s_addr;
   chan.application_data.length = 0;
   chan.application_data.value = NULL;
 
@@ -384,7 +385,8 @@ static void krb5_end(void *app_data)
   OM_uint32 min;
   gss_ctx_id_t *context = app_data;
   if(*context != GSS_C_NO_CONTEXT) {
-    OM_uint32 maj = gss_delete_sec_context(&min, context, GSS_C_NO_BUFFER);
+    OM_uint32 maj = Curl_gss_delete_sec_context(&min, context,
+                                                GSS_C_NO_BUFFER);
     (void)maj;
     DEBUGASSERT(maj == GSS_S_COMPLETE);
   }

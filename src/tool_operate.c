@@ -54,9 +54,6 @@
 #include <uv.h>
 #endif
 
-#include <curlx.h>
-
-#include "tool_binmode.h"
 #include "tool_cfgable.h"
 #include "tool_cb_dbg.h"
 #include "tool_cb_hdr.h"
@@ -80,7 +77,6 @@
 #include "tool_paramhlp.h"
 #include "tool_parsecfg.h"
 #include "tool_setopt.h"
-#include "tool_sleep.h"
 #include "tool_ssls.h"
 #include "tool_urlglob.h"
 #include "tool_util.h"
@@ -98,7 +94,7 @@
 CURL_EXTERN CURLcode curl_easy_perform_ev(CURL *easy);
 #endif
 
-#include <memdebug.h> /* keep this as LAST include */
+#include "memdebug.h" /* keep this as LAST include */
 
 #ifdef CURL_CA_EMBED
 #ifndef CURL_DECLARED_CURL_CA_EMBED
@@ -574,8 +570,22 @@ static CURLcode post_per_transfer(struct GlobalConfig *global,
   if(!curl || !config)
     return result;
 
-  if(per->infdopen)
-    close(per->infd);
+  if(per->uploadfile) {
+    if(!strcmp(per->uploadfile, ".") && per->infd > 0) {
+#if defined(_WIN32) && !defined(CURL_WINDOWS_UWP) && !defined(UNDER_CE)
+      sclose(per->infd);
+#else
+      warnf(per->config->global, "Closing per->infd != 0: FD == "
+            "%d. This behavior is only supported on desktop "
+            " Windows", per->infd);
+#endif
+    }
+  }
+  else {
+    if(per->infdopen) {
+      close(per->infd);
+    }
+  }
 
   if(per->skip)
     goto skip;
@@ -870,7 +880,7 @@ static CURLcode etag_store(struct GlobalConfig *global,
   }
   else {
     /* always use binary mode for protocol header output */
-    CURL_SET_BINMODE(etag_save->stream);
+    CURLX_SET_BINMODE(etag_save->stream);
   }
   return CURLE_OK;
 }
@@ -884,7 +894,7 @@ static CURLcode setup_headerfile(struct GlobalConfig *global,
   if(!strcmp(config->headerfile, "%")) {
     heads->stream = stderr;
     /* use binary mode for protocol header output */
-    CURL_SET_BINMODE(heads->stream);
+    CURLX_SET_BINMODE(heads->stream);
   }
   else if(strcmp(config->headerfile, "-")) {
     FILE *newfile;
@@ -924,7 +934,7 @@ static CURLcode setup_headerfile(struct GlobalConfig *global,
   }
   else {
     /* always use binary mode for protocol header output */
-    CURL_SET_BINMODE(heads->stream);
+    CURLX_SET_BINMODE(heads->stream);
   }
   return CURLE_OK;
 }
@@ -1066,8 +1076,28 @@ static void check_stdin_upload(struct GlobalConfig *global,
   DEBUGASSERT(per->infdopen == FALSE);
   DEBUGASSERT(per->infd == STDIN_FILENO);
 
-  CURL_SET_BINMODE(stdin);
+  CURLX_SET_BINMODE(stdin);
   if(!strcmp(per->uploadfile, ".")) {
+#if defined(_WIN32) && !defined(CURL_WINDOWS_UWP) && !defined(UNDER_CE)
+    /* non-blocking stdin behavior on Windows is challenging
+       Spawn a new thread that will read from stdin and write
+       out to a socket */
+    curl_socket_t f = win32_stdin_read_thread(global);
+
+    if(f == CURL_SOCKET_BAD)
+      warnf(global, "win32_stdin_read_thread returned INVALID_SOCKET "
+            "falling back to blocking mode");
+    else if(f > INT_MAX) {
+      warnf(global, "win32_stdin_read_thread returned identifier "
+            "larger than INT_MAX. This should not happen unless "
+            "the upper 32 bits of a Windows socket have started "
+            "being used for something... falling back to blocking "
+            "mode");
+      sclose(f);
+    }
+    else
+      per->infd = (int)f;
+#endif
     if(curlx_nonblock((curl_socket_t)per->infd, TRUE) < 0)
       warnf(global,
             "fcntl failed on fd=%d: %s", per->infd, strerror(errno));
@@ -1346,7 +1376,7 @@ static CURLcode single_transfer(struct GlobalConfig *global,
          !config->use_ascii) {
         /* We get the output to stdout and we have not got the ASCII/text
            flag, then set stdout to be binary */
-        CURL_SET_BINMODE(stdout);
+        CURLX_SET_BINMODE(stdout);
       }
 
       /* explicitly passed to stdout means okaying binary gunk */
@@ -1464,6 +1494,8 @@ static CURLcode add_parallel_transfers(struct GlobalConfig *global,
     (void)curl_easy_setopt(per->curl, CURLOPT_PIPEWAIT,
                            global->parallel_connect ? 0L : 1L);
     (void)curl_easy_setopt(per->curl, CURLOPT_PRIVATE, per);
+    /* curl does not use signals, switching this on saves some system calls */
+    (void)curl_easy_setopt(per->curl, CURLOPT_NOSIGNAL, 1L);
     (void)curl_easy_setopt(per->curl, CURLOPT_XFERINFOFUNCTION, xferinfo_cb);
     (void)curl_easy_setopt(per->curl, CURLOPT_XFERINFODATA, per);
     (void)curl_easy_setopt(per->curl, CURLOPT_NOPROGRESS, 0L);
@@ -1965,7 +1997,7 @@ static CURLcode serial_transfers(struct GlobalConfig *global,
 
     returncode = post_per_transfer(global, per, result, &retry, &delay_ms);
     if(retry) {
-      tool_go_sleep(delay_ms);
+      curlx_wait_ms(delay_ms);
       continue;
     }
 
@@ -1998,7 +2030,7 @@ static CURLcode serial_transfers(struct GlobalConfig *global,
                       "waits %ldms as set by --rate",
               milli, (long)(global->ms_per_transfer - milli));
         /* The transfer took less time than wanted. Wait a little. */
-        tool_go_sleep((long)(global->ms_per_transfer - milli));
+        curlx_wait_ms((long)(global->ms_per_transfer - milli));
       }
     }
   }

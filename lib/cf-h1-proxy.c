@@ -374,9 +374,6 @@ static CURLcode recv_CONNECT_resp(struct Curl_cfilter *cf,
   error = SELECT_OK;
   *done = FALSE;
 
-  if(!Curl_conn_data_pending(data, cf->sockindex))
-    return CURLE_OK;
-
   while(ts->keepon) {
     size_t nread;
     char byte;
@@ -740,7 +737,6 @@ struct Curl_cftype Curl_cft_h1_proxy = {
   cf_h1_proxy_connect,
   cf_h1_proxy_close,
   Curl_cf_def_shutdown,
-  Curl_cf_http_proxy_get_host,
   cf_h1_proxy_adjust_pollset,
   Curl_cf_def_data_pending,
   Curl_cf_def_send,
@@ -748,7 +744,7 @@ struct Curl_cftype Curl_cft_h1_proxy = {
   Curl_cf_def_cntrl,
   Curl_cf_def_conn_is_alive,
   Curl_cf_def_conn_keep_alive,
-  Curl_cf_def_query,
+  Curl_cf_http_proxy_query,
 };
 
 CURLcode Curl_cf_h1_proxy_insert_after(struct Curl_cfilter *cf_at,

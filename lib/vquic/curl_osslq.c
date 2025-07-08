@@ -37,7 +37,6 @@
 #include "../strdup.h"
 #include "../rand.h"
 #include "../multiif.h"
-#include "../strcase.h"
 #include "../cfilters.h"
 #include "../cf-socket.h"
 #include "../connect.h"
@@ -711,31 +710,14 @@ static struct cf_osslq_stream *cf_osslq_get_qstream(struct Curl_cfilter *cf,
   return NULL;
 }
 
-static void h3_drain_stream(struct Curl_cfilter *cf,
-                            struct Curl_easy *data)
-{
-  struct cf_osslq_ctx *ctx = cf->ctx;
-  struct h3_stream_ctx *stream = H3_STREAM_CTX(ctx, data);
-  unsigned char bits;
-
-  (void)cf;
-  bits = CURL_CSELECT_IN;
-  if(stream && stream->upload_left && !stream->send_closed)
-    bits |= CURL_CSELECT_OUT;
-  if(data->state.select_bits != bits) {
-    data->state.select_bits = bits;
-    Curl_expire(data, 0, EXPIRE_RUN_NOW);
-  }
-}
-
 static CURLcode h3_data_pause(struct Curl_cfilter *cf,
                               struct Curl_easy *data,
                               bool pause)
 {
+  (void)cf;
   if(!pause) {
     /* unpaused. make it run again right away */
-    h3_drain_stream(cf, data);
-    Curl_expire(data, 0, EXPIRE_RUN_NOW);
+    Curl_multi_mark_dirty(data);
   }
   return CURLE_OK;
 }
@@ -766,7 +748,7 @@ static int cb_h3_stream_close(nghttp3_conn *conn, int64_t stream_id,
   else {
     CURL_TRC_CF(data, cf, "[%" FMT_PRId64 "] CLOSED", stream->s.id);
   }
-  h3_drain_stream(cf, data);
+  Curl_multi_mark_dirty(data);
   return 0;
 }
 
@@ -783,21 +765,20 @@ static CURLcode write_resp_raw(struct Curl_cfilter *cf,
   struct cf_osslq_ctx *ctx = cf->ctx;
   struct h3_stream_ctx *stream = H3_STREAM_CTX(ctx, data);
   CURLcode result = CURLE_OK;
-  ssize_t nwritten;
+  size_t nwritten;
 
   (void)cf;
   if(!stream) {
     return CURLE_RECV_ERROR;
   }
-  nwritten = Curl_bufq_write(&stream->recvbuf, mem, memlen, &result);
-  if(nwritten < 0) {
+  result = Curl_bufq_write(&stream->recvbuf, mem, memlen, &nwritten);
+  if(result)
     return result;
-  }
 
   if(!flow)
     stream->recv_buf_nonflow += (size_t)nwritten;
 
-  if((size_t)nwritten < memlen) {
+  if(nwritten < memlen) {
     /* This MUST not happen. Our recbuf is dimensioned to hold the
      * full max_stream_window and then some for this very reason. */
     DEBUGASSERT(0);
@@ -831,7 +812,7 @@ static int cb_h3_recv_data(nghttp3_conn *conn, int64_t stream3_id,
   stream->download_recvd += (curl_off_t)buflen;
   CURL_TRC_CF(data, cf, "[%" FMT_PRId64 "] DATA len=%zu, total=%" FMT_OFF_T,
               stream->s.id, buflen, stream->download_recvd);
-  h3_drain_stream(cf, data);
+  Curl_multi_mark_dirty(data);
   return 0;
 }
 
@@ -943,7 +924,7 @@ static int cb_h3_end_headers(nghttp3_conn *conn, int64_t sid,
   if(stream->status_code / 100 != 1) {
     stream->resp_hds_complete = TRUE;
   }
-  h3_drain_stream(cf, data);
+  Curl_multi_mark_dirty(data);
   return 0;
 }
 
@@ -1282,27 +1263,24 @@ struct h3_quic_recv_ctx {
   struct cf_osslq_stream *s;
 };
 
-static ssize_t h3_quic_recv(void *reader_ctx,
+static CURLcode h3_quic_recv(void *reader_ctx,
                             unsigned char *buf, size_t len,
-                            CURLcode *err)
+                            size_t *pnread)
 {
   struct h3_quic_recv_ctx *x = reader_ctx;
-  size_t nread;
   int rv;
 
-  *err = CURLE_OK;
-  rv = SSL_read_ex(x->s->ssl, buf, len, &nread);
+  rv = SSL_read_ex(x->s->ssl, buf, len, pnread);
   if(rv <= 0) {
     int detail = SSL_get_error(x->s->ssl, rv);
     if(detail == SSL_ERROR_WANT_READ || detail == SSL_ERROR_WANT_WRITE) {
-      *err = CURLE_AGAIN;
-      return -1;
+      return CURLE_AGAIN;
     }
     else if(detail == SSL_ERROR_ZERO_RETURN) {
       CURL_TRC_CF(x->data, x->cf, "[%" FMT_PRId64 "] h3_quic_recv -> EOS",
                   x->s->id);
       x->s->recvd_eos = TRUE;
-      return 0;
+      return CURLE_OK;
     }
     else if(SSL_get_stream_read_state(x->s->ssl) ==
             SSL_STREAM_STATE_RESET_REMOTE) {
@@ -1315,14 +1293,13 @@ static ssize_t h3_quic_recv(void *reader_ctx,
         x->s->reset = TRUE;
       }
       x->s->recvd_eos = TRUE;
-      return 0;
+      return CURLE_OK;
     }
     else {
-      *err = cf_osslq_ssl_err(x->cf, x->data, detail, CURLE_RECV_ERROR);
-      return -1;
+      return cf_osslq_ssl_err(x->cf, x->data, detail, CURLE_RECV_ERROR);
     }
   }
-  return (ssize_t)nread;
+  return CURLE_OK;
 }
 
 static CURLcode cf_osslq_stream_recv(struct cf_osslq_stream *s,
@@ -1332,6 +1309,7 @@ static CURLcode cf_osslq_stream_recv(struct cf_osslq_stream *s,
   struct cf_osslq_ctx *ctx = cf->ctx;
   CURLcode result = CURLE_OK;
   ssize_t nread;
+  size_t n;
   struct h3_quic_recv_ctx x;
   bool eagain = FALSE;
   size_t total_recv_len = 0;
@@ -1347,8 +1325,8 @@ static CURLcode cf_osslq_stream_recv(struct cf_osslq_stream *s,
         (total_recv_len < H3_STREAM_CHUNK_SIZE)) {
     if(Curl_bufq_is_empty(&s->recvbuf) && !s->recvd_eos) {
       while(!eagain && !s->recvd_eos && !Curl_bufq_is_full(&s->recvbuf)) {
-        nread = Curl_bufq_sipn(&s->recvbuf, 0, h3_quic_recv, &x, &result);
-        if(nread < 0) {
+        result = Curl_bufq_sipn(&s->recvbuf, 0, h3_quic_recv, &x, &n);
+        if(result) {
           if(result != CURLE_AGAIN)
             goto out;
           result = CURLE_OK;
@@ -1589,7 +1567,7 @@ static CURLcode cf_osslq_check_and_unblock(struct Curl_cfilter *cf,
           if(stream) {
             nghttp3_conn_unblock_stream(ctx->h3.conn, stream->s.id);
             stream->s.send_blocked = FALSE;
-            h3_drain_stream(cf, ctx->curl_items[idx_count]);
+            Curl_multi_mark_dirty(ctx->curl_items[idx_count]);
             CURL_TRC_CF(ctx->curl_items[idx_count], cf, "unblocked");
           }
           result_count--;
@@ -2040,7 +2018,7 @@ static CURLcode cf_osslq_send(struct Curl_cfilter *cf, struct Curl_easy *data,
   struct h3_stream_ctx *stream = H3_STREAM_CTX(ctx, data);
   struct cf_call_data save;
   ssize_t nwritten;
-  CURLcode result = CURLE_OK, r2;
+  CURLcode result = CURLE_OK;
 
   (void)eos; /* use to end stream */
   CF_DATA_SAVE(save, cf, data);
@@ -2085,25 +2063,20 @@ static CURLcode cf_osslq_send(struct Curl_cfilter *cf, struct Curl_easy *data,
     goto out;
   }
   else {
-    nwritten = Curl_bufq_write(&stream->sendbuf, buf, len, &result);
+    result = Curl_bufq_write(&stream->sendbuf, buf, len, pnwritten);
     CURL_TRC_CF(data, cf, "[%" FMT_PRId64 "] cf_send, add to "
-                "sendbuf(len=%zu) -> %zd, %d",
-                stream->s.id, len, nwritten, result);
-    if(nwritten < 0) {
+                "sendbuf(len=%zu) -> %d, %zu",
+                stream->s.id, len, result, *pnwritten);
+    if(result)
       goto out;
-    }
-    *pnwritten = (size_t)nwritten;
     (void)nghttp3_conn_resume_stream(ctx->h3.conn, stream->s.id);
   }
 
-  r2 = cf_progress_egress(cf, data);
-  if(r2)
-    result = r2;
+  result = Curl_1st_err(result, cf_progress_egress(cf, data));
 
 out:
-  r2 = check_and_set_expiry(cf, data);
-  if(r2)
-    result = r2;
+  result = Curl_1st_err(result, check_and_set_expiry(cf, data));
+
   CURL_TRC_CF(data, cf, "[%" FMT_PRId64 "] cf_send(len=%zu) -> %d, %zu",
               stream ? stream->s.id : -1, len, result, *pnwritten);
   CF_DATA_RESTORE(cf, save);
@@ -2139,9 +2112,8 @@ static CURLcode cf_osslq_recv(struct Curl_cfilter *cf, struct Curl_easy *data,
 {
   struct cf_osslq_ctx *ctx = cf->ctx;
   struct h3_stream_ctx *stream = H3_STREAM_CTX(ctx, data);
-  ssize_t nread = -1;
   struct cf_call_data save;
-  CURLcode result = CURLE_OK, r2;
+  CURLcode result = CURLE_OK;
 
   (void)ctx;
   CF_DATA_SAVE(save, cf, data);
@@ -2157,36 +2129,30 @@ static CURLcode cf_osslq_recv(struct Curl_cfilter *cf, struct Curl_easy *data,
   }
 
   if(!Curl_bufq_is_empty(&stream->recvbuf)) {
-    nread = Curl_bufq_read(&stream->recvbuf,
-                           (unsigned char *)buf, len, &result);
-    if(nread < 0) {
+    result = Curl_bufq_cread(&stream->recvbuf, buf, len, pnread);
+    if(result) {
       CURL_TRC_CF(data, cf, "[%" FMT_PRId64 "] read recvbuf(len=%zu) "
-                  "-> %zd, %d", stream->s.id, len, nread, result);
+                  "-> %d, %zu", stream->s.id, len, result, *pnread);
       goto out;
     }
-    *pnread = (size_t)nread;
   }
 
-  r2 = cf_progress_ingress(cf, data);
-  if(r2) {
-    result = r2;
+  result = Curl_1st_err(result, cf_progress_ingress(cf, data));
+  if(result)
     goto out;
-  }
 
   /* recvbuf had nothing before, maybe after progressing ingress? */
   if(!*pnread && !Curl_bufq_is_empty(&stream->recvbuf)) {
-    nread = Curl_bufq_read(&stream->recvbuf,
-                           (unsigned char *)buf, len, &result);
-    if(nread < 0) {
+    result = Curl_bufq_cread(&stream->recvbuf, buf, len, pnread);
+    if(result) {
       CURL_TRC_CF(data, cf, "[%" FMT_PRId64 "] read recvbuf(len=%zu) "
-                  "-> %zd, %d", stream->s.id, len, nread, result);
+                  "-> %d, %zu", stream->s.id, len, result, *pnread);
       goto out;
     }
-    *pnread = (size_t)nread;
   }
 
   if(*pnread) {
-    h3_drain_stream(cf, data);
+    Curl_multi_mark_dirty(data);
   }
   else {
     if(stream->closed) {
@@ -2197,14 +2163,9 @@ static CURLcode cf_osslq_recv(struct Curl_cfilter *cf, struct Curl_easy *data,
   }
 
 out:
-  if(cf_progress_egress(cf, data)) {
-    result = CURLE_SEND_ERROR;
-  }
-  else {
-    r2 = check_and_set_expiry(cf, data);
-    if(r2)
-      result = r2;
-  }
+  result = Curl_1st_err(result, cf_progress_egress(cf, data));
+  result = Curl_1st_err(result, check_and_set_expiry(cf, data));
+
   CURL_TRC_CF(data, cf, "[%" FMT_PRId64 "] cf_recv(len=%zu) -> %d, %zu",
               stream ? stream->s.id : -1, len, result, *pnread);
   CF_DATA_RESTORE(cf, save);
@@ -2403,6 +2364,14 @@ static CURLcode cf_osslq_query(struct Curl_cfilter *cf,
   case CF_QUERY_HTTP_VERSION:
     *pres1 = 30;
     return CURLE_OK;
+  case CF_QUERY_SSL_INFO:
+  case CF_QUERY_SSL_CTX_INFO: {
+    struct curl_tlssessioninfo *info = pres2;
+    if(Curl_vquic_tls_get_ssl_info(&ctx->tls,
+                                   (query == CF_QUERY_SSL_INFO), info))
+      return CURLE_OK;
+    break;
+  }
   default:
     break;
   }
@@ -2419,7 +2388,6 @@ struct Curl_cftype Curl_cft_http3 = {
   cf_osslq_connect,
   cf_osslq_close,
   cf_osslq_shutdown,
-  Curl_cf_def_get_host,
   cf_osslq_adjust_pollset,
   cf_osslq_data_pending,
   cf_osslq_send,

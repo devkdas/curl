@@ -21,11 +21,9 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "test.h"
-#include "testutil.h"
-#include "memdebug.h"
+#include "first.h"
 
-#include <stdio.h>
+#include "memdebug.h"
 
 #if defined(USE_THREADS_POSIX) || defined(USE_THREADS_WIN32)
 #if defined(USE_THREADS_POSIX)

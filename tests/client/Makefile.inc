@@ -24,13 +24,18 @@
 # Shared between CMakeLists.txt and Makefile.am
 
 BUNDLE = clients
-BUNDLE_SRC = clients.c
 
 # Files referenced from the bundle source
-FIRSTFILES = first.c first.h
+FIRST_C = first.c
+FIRST_H = first.h
+
+CURLX_C = \
+  ../../lib/curlx/multibyte.c \
+  ../../lib/curlx/timediff.c \
+  ../../lib/curlx/wait.c
 
 # All test clients
-TESTFILES = \
+TESTS_C = \
   h2_pausing.c \
   h2_serverpush.c \
   h2_upgrade_extreme.c \

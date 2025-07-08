@@ -21,28 +21,32 @@
 # SPDX-License-Identifier: curl
 #
 ###########################################################################
-# Get BUNDLE, BUNDLE_SRC, FIRSTFILES, TESTFILES variables
+
+# Get BUNDLE, FIRST_C, FIRST_H, CURLX_C, TESTS_C variables
 curl_transform_makefile_inc("Makefile.inc" "${CMAKE_CURRENT_BINARY_DIR}/Makefile.inc.cmake")
 include("${CMAKE_CURRENT_BINARY_DIR}/Makefile.inc.cmake")
 
-add_custom_command(
-  OUTPUT "${BUNDLE_SRC}"
-  COMMAND ${PERL_EXECUTABLE} "${PROJECT_SOURCE_DIR}/scripts/mk-unity.pl" --test ${TESTFILES}
-    ${CURL_MK_UNITY_OPTION} --srcdir "${CMAKE_CURRENT_SOURCE_DIR}" > "${BUNDLE_SRC}"
+if(LIB_SELECTED STREQUAL LIB_STATIC)
+  set(CURLX_C "")  # Already exported from the libcurl static build. Skip them.
+endif()
+
+add_custom_command(OUTPUT "${BUNDLE}.c"
+  COMMAND ${PERL_EXECUTABLE} "${PROJECT_SOURCE_DIR}/scripts/mk-unity.pl"
+    --include ${CURLX_C} --test ${TESTS_C} > "${BUNDLE}.c"
   DEPENDS
-    "${PROJECT_SOURCE_DIR}/scripts/mk-unity.pl" "${CMAKE_CURRENT_SOURCE_DIR}/Makefile.inc" ${FIRSTFILES} ${TESTFILES}
+    "${PROJECT_SOURCE_DIR}/scripts/mk-unity.pl" "${CMAKE_CURRENT_SOURCE_DIR}/Makefile.inc"
+    ${FIRST_C} ${CURLX_C} ${TESTS_C}
   VERBATIM)
 
-add_executable(http-clients EXCLUDE_FROM_ALL "${BUNDLE_SRC}")
-add_dependencies(testdeps http-clients)
-target_include_directories(http-clients PRIVATE
+add_executable(${BUNDLE} EXCLUDE_FROM_ALL "${BUNDLE}.c")
+add_dependencies(testdeps ${BUNDLE})
+target_link_libraries(${BUNDLE} ${LIB_SELECTED} ${CURL_LIBS})
+target_include_directories(${BUNDLE} PRIVATE
   "${PROJECT_BINARY_DIR}/lib"            # for "curl_config.h"
-  "${CMAKE_CURRENT_SOURCE_DIR}"          # for "first.h"
+  "${PROJECT_SOURCE_DIR}/lib"            # for "curl_setup.h", curlx
+  "${CMAKE_CURRENT_SOURCE_DIR}"          # for the generated bundle source to find included test sources
 )
-target_link_libraries(http-clients ${LIB_SELECTED} ${CURL_LIBS})
-set_property(TARGET http-clients APPEND PROPERTY COMPILE_DEFINITIONS "CURL_NO_OLDIES"
-  "$<$<BOOL:MSVC>:_CRT_SECURE_NO_DEPRECATE>")
-if(LIB_SELECTED STREQUAL LIB_STATIC AND WIN32)
-  set_property(TARGET http-clients APPEND PROPERTY COMPILE_DEFINITIONS "CURL_STATICLIB")
-endif()
-set_target_properties(http-clients PROPERTIES OUTPUT_NAME "${BUNDLE}" PROJECT_LABEL "Test ${BUNDLE}" UNITY_BUILD OFF)
+set_property(TARGET ${BUNDLE} APPEND PROPERTY COMPILE_DEFINITIONS "CURL_NO_OLDIES")
+set_target_properties(${BUNDLE} PROPERTIES OUTPUT_NAME "${BUNDLE}" PROJECT_LABEL "Test ${BUNDLE}" UNITY_BUILD OFF C_CLANG_TIDY "")
+
+curl_add_clang_tidy_test_target("${BUNDLE}-clang-tidy" ${BUNDLE} ${FIRST_C} ${TESTS_C})

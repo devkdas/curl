@@ -665,10 +665,6 @@ struct connectdata {
    * the connection is cleaned up (see Curl_hash_add2()).*/
   struct Curl_hash meta_hash;
 
-  /* 'remote_addr' is the particular IP we connected to. it is owned, set
-   * and NULLed by the connected socket filter (if there is one). */
-  const struct Curl_sockaddr_ex *remote_addr;
-
   struct hostname host;
   char *hostname_resolve; /* hostname to resolve to address, allocated */
   char *secondaryhostname; /* secondary socket hostname (ftp) */
@@ -1159,9 +1155,6 @@ struct UrlState {
 #endif
   unsigned char httpreq; /* Curl_HttpReq; what kind of HTTP request (if any)
                             is this */
-  unsigned char select_bits; /* != 0 -> bitmask of socket events for this
-                                 transfer overriding anything the socket may
-                                 report */
   unsigned int creds_from:2; /* where is the server credentials originating
                                 from, see the CREDS_* defines above */
 

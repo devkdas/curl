@@ -1,5 +1,3 @@
-#ifndef HEADER_CURL_SERVER_GETPART_H
-#define HEADER_CURL_SERVER_GETPART_H
 /***************************************************************************
  *                                  _   _ ____  _
  *  Project                     ___| | | |  _ \| |
@@ -23,16 +21,24 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "curl_setup.h"
+#include "first.h"
 
-#include "strdup.h"
+static CURLcode test_lib1599(char *URL)
+{
+  CURL *curl;
+  CURLcode res = CURLE_OK;
 
-#define GPE_NO_BUFFER_SPACE -2
-#define GPE_OUT_OF_MEMORY   -1
-#define GPE_OK               0
-#define GPE_END_OF_FILE      1
+  global_init(CURL_GLOBAL_ALL);
+  curl = curl_easy_init();
+  if(curl) {
+    curl_easy_setopt(curl, CURLOPT_URL, URL);
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+    curl_easy_setopt(curl, CURLOPT_NETRC, (long)CURL_NETRC_REQUIRED);
+    curl_easy_setopt(curl, CURLOPT_NETRC_FILE, libtest_arg2);
 
-int getpart(char **outbuf, size_t *outlen,
-            const char *main, const char *sub, FILE *stream);
-
-#endif /* HEADER_CURL_SERVER_GETPART_H */
+    res = curl_easy_perform(curl);
+    curl_easy_cleanup(curl);
+  }
+  curl_global_cleanup();
+  return res;
+}

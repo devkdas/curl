@@ -21,14 +21,7 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "curl_setup.h"
-
-#include "getpart.h"
-#include <curlx.h> /* from the private lib dir */
-#include "curl_memory.h"
-
-/* include memdebug.h last */
-#include <memdebug.h>
+#include "first.h"
 
 #define EAT_SPACE(p) while(*(p) && ISSPACE(*(p))) (p)++
 
@@ -38,30 +31,6 @@
 #define show(x) printf x
 #else
 #define show(x) Curl_nop_stmt
-#endif
-
-#if defined(UNDER_CE)
-#define system_strdup _strdup
-#else
-#define system_strdup strdup
-#endif
-
-#if defined(_MSC_VER) && defined(_DLL)
-#  pragma warning(push)
-#  pragma warning(disable:4232) /* MSVC extension, dllimport identity */
-#endif
-
-curl_malloc_callback Curl_cmalloc = (curl_malloc_callback)malloc;
-curl_free_callback Curl_cfree = (curl_free_callback)free;
-curl_realloc_callback Curl_crealloc = (curl_realloc_callback)realloc;
-curl_strdup_callback Curl_cstrdup = (curl_strdup_callback)system_strdup;
-curl_calloc_callback Curl_ccalloc = (curl_calloc_callback)calloc;
-#if defined(_WIN32) && defined(UNICODE)
-curl_wcsdup_callback Curl_cwcsdup = NULL; /* not use in test code */
-#endif
-
-#if defined(_MSC_VER) && defined(_DLL)
-#  pragma warning(pop)
 #endif
 
 /*

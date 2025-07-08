@@ -21,31 +21,27 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
+#include "first.h"
 
-int main(int argc, char **argv)
-{
-  entry_func_t entry_func;
-  char *entry_name;
-  size_t tmp;
+#include "curl_memory.h"
 
-  if(argc < 2) {
-    fprintf(stderr, "Pass clientname as first argument\n");
-    return 1;
-  }
+#ifdef UNDER_CE
+#define system_strdup _strdup
+#else
+#define system_strdup strdup
+#endif
 
-  entry_name = argv[1];
-  entry_func = NULL;
-  for(tmp = 0; tmp < CURL_ARRAYSIZE(s_entries); ++tmp) {
-    if(strcmp(entry_name, s_entries[tmp].name) == 0) {
-      entry_func = s_entries[tmp].ptr;
-      break;
-    }
-  }
+#if defined(_MSC_VER) && defined(_DLL)
+#  pragma warning(push)
+#  pragma warning(disable:4232) /* MSVC extension, dllimport identity */
+#endif
 
-  if(!entry_func) {
-    fprintf(stderr, "Test '%s' not found.\n", entry_name);
-    return 99;
-  }
+curl_malloc_callback Curl_cmalloc = (curl_malloc_callback)malloc;
+curl_free_callback Curl_cfree = (curl_free_callback)free;
+curl_realloc_callback Curl_crealloc = (curl_realloc_callback)realloc;
+curl_strdup_callback Curl_cstrdup = (curl_strdup_callback)system_strdup;
+curl_calloc_callback Curl_ccalloc = (curl_calloc_callback)calloc;
 
-  return entry_func(argc - 1, argv + 1);
-}
+#if defined(_MSC_VER) && defined(_DLL)
+#  pragma warning(pop)
+#endif

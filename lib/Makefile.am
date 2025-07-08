@@ -23,19 +23,26 @@
 ###########################################################################
 AUTOMAKE_OPTIONS = foreign nostdinc
 
+# Get CSOURCES, HHEADERS, LIB_RCFILES variables
+include Makefile.inc
+
 CMAKE_DIST = CMakeLists.txt curl_config.h.cmake
 
-CHECKSRC_DIST = .checksrc vauth/.checksrc vquic/.checksrc vssh/.checksrc \
- vtls/.checksrc
+CHECKSRC_DIST = .checksrc \
+  curlx/.checksrc vauth/.checksrc vquic/.checksrc vssh/.checksrc vtls/.checksrc
 
 EXTRA_DIST = config-mac.h config-os400.h config-plan9.h config-riscos.h \
- config-win32.h curl_config.h.in libcurl.rc libcurl.def                 \
- $(CMAKE_DIST) Makefile.soname optiontable.pl $(CHECKSRC_DIST)
+  config-win32.h curl_config.h.in $(LIB_RCFILES) libcurl.def            \
+  $(CMAKE_DIST) Makefile.soname optiontable.pl $(CHECKSRC_DIST)
 
 lib_LTLIBRARIES = libcurl.la
 
 if BUILD_UNITTESTS
 noinst_LTLIBRARIES = libcurlu.la
+
+# generate a file with "private" prototypes for unit testing
+UNITPROTOS = unitprotos.h
+
 else
 noinst_LTLIBRARIES =
 endif
@@ -50,6 +57,7 @@ CFLAGS += @CURL_CFLAG_EXTRAS@
 #
 # $(top_srcdir)/include is for libcurl's external include files
 # $(top_builddir)/lib is for libcurl's generated lib/curl_config.h file
+# $(srcdir) for the generated unity source to find included sources
 
 AM_CPPFLAGS = -I$(top_srcdir)/include   \
               -I$(top_builddir)/lib     \
@@ -68,9 +76,6 @@ if CURLDEBUG
 AM_CPPFLAGS += -DCURLDEBUG
 endif
 
-# Get CSOURCES, HHEADERS variables
-include Makefile.inc
-
 if DOING_NATIVE_WINDOWS
 CSOURCES += dllmain.c
 endif
@@ -87,7 +92,10 @@ CLEANFILES = libcurl_unity.c
 else
 libcurl_la_SOURCES = $(CSOURCES) $(HHEADERS)
 libcurlu_la_SOURCES = $(CSOURCES) $(HHEADERS)
+CLEANFILES =
 endif
+
+CLEANFILES += $(UNITPROTOS)
 
 libcurl_la_CPPFLAGS_EXTRA =
 libcurl_la_LDFLAGS_EXTRA =
@@ -150,12 +158,23 @@ checksrc:
 if NOT_CURL_CI
 if DEBUGBUILD
 # for debug builds, we scan the sources on all regular make invokes
-all-local: checksrc
+CHECKSOURCES = checksrc
 endif
 endif
 
+all-local: $(CHECKSOURCES) $(UNITPROTOS)
+
+UNIT_V = $(UNITV_$(V))
+UNITV_0 = @echo "  UNITPR  " $@;
+UNITV_1 =
+UNITV_ = $(UNITV_0)
+
+# UNITPROTOS depends on every C file in the lib/ dir
+$(UNITPROTOS): $(CSOURCES)
+	$(UNIT_V)(cd $(srcdir) && @PERL@ ../scripts/extract-unit-protos $(CSOURCES) > $(top_builddir)/lib/$(UNITPROTOS))
+
 # disable the tests that are mostly causing false positives
-TIDYFLAGS := -checks=-clang-analyzer-security.insecureAPI.strcpy,-clang-analyzer-optin.performance.Padding,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling -quiet
+TIDYFLAGS := -checks=-clang-analyzer-security.insecureAPI.bzero,-clang-analyzer-security.insecureAPI.strcpy,-clang-analyzer-optin.performance.Padding,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling -quiet
 if CURL_WERROR
 TIDYFLAGS += --warnings-as-errors=*
 endif

@@ -21,13 +21,11 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "test.h"
+#include "first.h"
 
 /* test case and code based on https://github.com/curl/curl/issues/2847 */
 
 #include "testtrace.h"
-#include "testutil.h"
-#include "warnless.h"
 #include "memdebug.h"
 
 static int sockopt_callback(void *clientp, curl_socket_t curlfd,
