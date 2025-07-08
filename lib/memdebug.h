@@ -141,18 +141,13 @@ CURL_EXTERN ALLOC_FUNC
 #define recv(a,b,c,d) curl_dbg_recv(a,b,c,d, __LINE__, __FILE__)
 
 #ifdef _WIN32
-#  ifdef UNICODE
-#    undef wcsdup
-#    define wcsdup(ptr) curl_dbg_wcsdup(ptr, __LINE__, __FILE__)
-#    undef _wcsdup
-#    define _wcsdup(ptr) curl_dbg_wcsdup(ptr, __LINE__, __FILE__)
-#    undef _tcsdup
-#    define _tcsdup(ptr) curl_dbg_wcsdup(ptr, __LINE__, __FILE__)
-#  else
-#    undef _tcsdup
-#    define _tcsdup(ptr) curl_dbg_strdup(ptr, __LINE__, __FILE__)
-#  endif
+#undef _tcsdup
+#ifdef UNICODE
+#define _tcsdup(ptr) curl_dbg_wcsdup(ptr, __LINE__, __FILE__)
+#else
+#define _tcsdup(ptr) curl_dbg_strdup(ptr, __LINE__, __FILE__)
 #endif
+#endif /* _WIN32 */
 
 #undef socket
 #define socket(domain,type,protocol) \
