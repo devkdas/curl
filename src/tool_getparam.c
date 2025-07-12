@@ -1164,12 +1164,12 @@ static ParameterError parse_continue_at(struct OperationConfig *config,
     return PARAM_BAD_USE;
   }
   if(config->rm_partial) {
-    errorf(config->global,
+    errorf(global,
            "--continue-at is mutually exclusive with --remove-on-error");
     return PARAM_BAD_USE;
   }
   if(config->file_clobber_mode == CLOBBER_NEVER) {
-    errorf(config->global,
+    errorf(global,
            "--continue-at is mutually exclusive with --no-clobber");
     return PARAM_BAD_USE;
   }
@@ -1739,7 +1739,7 @@ static ParameterError opt_none(struct OperationConfig *config,
        This means if --quic-v2 is set, we should attempt QUIC v2 and not fall
        back to other HTTP versions like H1/H2 if QUIC v2 fails.
        It also means we are trying for H3, so set the httpversion to 3ONLY. */
-    sethttpver(global, config, CURL_HTTP_VERSION_3ONLY);
+    sethttpver(config, CURL_HTTP_VERSION_3ONLY);
     break;
   case C_TLSV1: /* --tlsv1 */
     config->ssl_version = CURL_SSLVERSION_TLSv1;
