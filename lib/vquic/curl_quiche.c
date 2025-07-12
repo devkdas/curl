@@ -818,8 +818,8 @@ out:
 }
 
 static CURLcode recv_closed_stream(struct Curl_cfilter *cf,
-                                  struct Curl_easy *data,
-                                  size_t *pnread)
+                                   struct Curl_easy *data,
+                                   size_t *pnread)
 {
   struct cf_quiche_ctx *ctx = cf->ctx;
   struct h3_stream_ctx *stream = H3_STREAM_CTX(ctx, data);
@@ -1529,7 +1529,7 @@ static CURLcode cf_quiche_query(struct Curl_cfilter *cf,
   switch(query) {
   case CF_QUERY_MAX_CONCURRENT: {
     curl_uint64_t max_streams = CONN_ATTACHED(cf->conn);
-    if(!ctx->goaway) {
+    if(!ctx->goaway && ctx->qconn) {
       max_streams += quiche_conn_peer_streams_left_bidi(ctx->qconn);
     }
     *pres1 = (max_streams > INT_MAX) ? INT_MAX : (int)max_streams;

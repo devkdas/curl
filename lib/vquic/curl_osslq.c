@@ -560,7 +560,7 @@ static CURLcode cf_osslq_ssl_err(struct Curl_cfilter *cf,
 }
 
 static CURLcode cf_osslq_verify_peer(struct Curl_cfilter *cf,
-                                  struct Curl_easy *data)
+                                     struct Curl_easy *data)
 {
   struct cf_osslq_ctx *ctx = cf->ctx;
 
@@ -1265,8 +1265,8 @@ struct h3_quic_recv_ctx {
 };
 
 static CURLcode h3_quic_recv(void *reader_ctx,
-                            unsigned char *buf, size_t len,
-                            size_t *pnread)
+                             unsigned char *buf, size_t len,
+                             size_t *pnread)
 {
   struct h3_quic_recv_ctx *x = reader_ctx;
   int rv;
@@ -2327,8 +2327,9 @@ static CURLcode cf_osslq_query(struct Curl_cfilter *cf,
   case CF_QUERY_MAX_CONCURRENT: {
 #ifdef SSL_VALUE_QUIC_STREAM_BIDI_LOCAL_AVAIL
     /* Added in OpenSSL v3.3.x */
-    uint64_t v;
-    if(!SSL_get_value_uint(ctx->tls.ossl.ssl, SSL_VALUE_CLASS_GENERIC,
+    uint64_t v = 0;
+    if(ctx->tls.ossl.ssl &&
+       !SSL_get_value_uint(ctx->tls.ossl.ssl, SSL_VALUE_CLASS_GENERIC,
                            SSL_VALUE_QUIC_STREAM_BIDI_LOCAL_AVAIL, &v)) {
       CURL_TRC_CF(data, cf, "error getting available local bidi streams");
       return CURLE_HTTP3;

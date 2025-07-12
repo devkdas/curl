@@ -1951,7 +1951,7 @@ static void h2_pri_spec(struct cf_h2_ctx *ctx,
  * Flush any out data pending in the network buffer.
  */
 static CURLcode h2_progress_egress(struct Curl_cfilter *cf,
-                                  struct Curl_easy *data)
+                                   struct Curl_easy *data)
 {
   struct cf_h2_ctx *ctx = cf->ctx;
   struct h2_stream_ctx *stream = H2_STREAM_CTX(ctx, data);
@@ -2750,7 +2750,7 @@ static CURLcode cf_h2_query(struct Curl_cfilter *cf,
     DEBUGASSERT(pres1);
 
     CF_DATA_SAVE(save, cf, data);
-    if(nghttp2_session_check_request_allowed(ctx->h2) == 0) {
+    if(!ctx->h2 || !nghttp2_session_check_request_allowed(ctx->h2)) {
       /* the limit is what we have in use right now */
       effective_max = CONN_ATTACHED(cf->conn);
     }
