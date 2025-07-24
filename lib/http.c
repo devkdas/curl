@@ -1077,7 +1077,9 @@ CURLcode Curl_http_input_auth(struct Curl_easy *data, bool proxy,
   }
   return result;
 #else
-  (void) proxy;
+  (void)data;
+  (void)proxy;
+  (void)auth;
   /* nothing to do when disabled */
   return CURLE_OK;
 #endif
@@ -4569,7 +4571,7 @@ struct name_const {
 };
 
 /* keep them sorted by length! */
-static struct name_const H2_NON_FIELD[] = {
+static const struct name_const H2_NON_FIELD[] = {
   { STRCONST("Host") },
   { STRCONST("Upgrade") },
   { STRCONST("Connection") },
