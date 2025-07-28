@@ -327,8 +327,8 @@ static CURLcode setopt_HTTP_VERSION(struct Curl_easy *data, long arg)
 #endif /* ! CURL_DISABLE_HTTP */
 
 #ifdef USE_SSL
-static CURLcode setopt_SSLVERSION(struct Curl_easy *data, CURLoption option,
-                                  long arg)
+CURLcode Curl_setopt_SSLVERSION(struct Curl_easy *data, CURLoption option,
+                                long arg)
 {
   /*
    * Set explicit SSL version to try to connect with, as some SSL
@@ -353,6 +353,8 @@ static CURLcode setopt_SSLVERSION(struct Curl_easy *data, CURLoption option,
        version_max < CURL_SSLVERSION_MAX_NONE ||
        version_max >= CURL_SSLVERSION_MAX_LAST)
       return CURLE_BAD_FUNCTION_ARGUMENT;
+    if(version == CURL_SSLVERSION_DEFAULT)
+      version = CURL_SSLVERSION_TLSv1_2;
 
     primary->version = (unsigned char)version;
     primary->version_max = (unsigned int)version_max;
@@ -441,7 +443,7 @@ static void set_ssl_options(struct ssl_config_data *ssl,
 static CURLcode setopt_long(struct Curl_easy *data, CURLoption option,
                             long arg)
 {
-  bool enabled = (0 != arg);
+  bool enabled = !!arg;
   unsigned long uarg = (unsigned long)arg;
   switch(option) {
   case CURLOPT_DNS_CACHE_TIMEOUT:
@@ -624,11 +626,7 @@ static CURLcode setopt_long(struct Curl_easy *data, CURLoption option,
 #ifndef CURL_DISABLE_PROXY
   case CURLOPT_PROXY_SSLVERSION:
 #endif
-#ifdef USE_SSL
-    return setopt_SSLVERSION(data, option, arg);
-#else
-    return CURLE_NOT_BUILT_IN;
-#endif
+    return Curl_setopt_SSLVERSION(data, option, arg);
 
   case CURLOPT_POSTFIELDSIZE:
     /*
@@ -648,7 +646,7 @@ static CURLcode setopt_long(struct Curl_easy *data, CURLoption option,
     data->set.postfieldsize = arg;
     break;
 #ifndef CURL_DISABLE_HTTP
-#if !defined(CURL_DISABLE_COOKIES)
+#ifndef CURL_DISABLE_COOKIES
   case CURLOPT_COOKIESESSION:
     /*
      * Set this option to TRUE to start a new "cookie session". It will
@@ -1785,7 +1783,7 @@ static CURLcode setopt_cptr(struct Curl_easy *data, CURLoption option,
     }
     return Curl_setstropt(&data->set.str[STRING_ENCODING], ptr);
 
-#if !defined(CURL_DISABLE_AWS)
+#ifndef CURL_DISABLE_AWS
   case CURLOPT_AWS_SIGV4:
     /*
      * String that is merged to some authentication
@@ -1817,7 +1815,7 @@ static CURLcode setopt_cptr(struct Curl_easy *data, CURLoption option,
      */
     return Curl_setstropt(&data->set.str[STRING_USERAGENT], ptr);
 
-#if !defined(CURL_DISABLE_COOKIES)
+#ifndef CURL_DISABLE_COOKIES
   case CURLOPT_COOKIE:
     /*
      * Cookie string to send to the remote server in the request.
