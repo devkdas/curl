@@ -168,6 +168,7 @@ typedef enum {
   C_NTLM,
   C_NTLM_WB,
   C_OAUTH2_BEARER,
+  C_OUT_NULL,
   C_OUTPUT,
   C_OUTPUT_DIR,
   C_PARALLEL,

@@ -625,8 +625,7 @@ struct ip_quadruple {
 struct proxy_info {
   struct hostname host;
   int port;
-  unsigned char proxytype; /* curl_proxytype: what kind of proxy that is in
-                              use */
+  unsigned char proxytype; /* what kind of proxy that is in use */
   char *user;    /* proxy username string, allocated */
   char *passwd;  /* proxy password string, allocated */
 };
@@ -780,11 +779,6 @@ struct connectdata {
   unsigned short localport;
   unsigned short secondary_port; /* secondary socket remote port to connect to
                                     (ftp) */
-  unsigned char alpn; /* APLN TLS negotiated protocol, a CURL_HTTP_VERSION*
-                         value */
-#ifndef CURL_DISABLE_PROXY
-  unsigned char proxy_alpn; /* APLN of proxy tunnel, CURL_HTTP_VERSION* */
-#endif
   unsigned char transport_wanted; /* one of the TRNSPRT_* defines. Not
    necessarily the transport the connection ends using due to Alt-Svc
    and happy eyeballing. Use `Curl_conn_get_transport() for actual value
@@ -1440,7 +1434,7 @@ struct UserDefined {
   unsigned short proxyport; /* If non-zero, use this port number by
                                default. If the proxy string features a
                                ":[port]" that one will override this. */
-  unsigned char proxytype; /* what kind of proxy: curl_proxytype */
+  unsigned char proxytype; /* what kind of proxy */
   unsigned char socks5auth;/* kind of SOCKS5 authentication to use (bitmask) */
 #endif
   struct ssl_general_config general_ssl; /* general user defined SSL stuff */

@@ -1429,7 +1429,6 @@ static CURLcode cf_quiche_connect(struct Curl_cfilter *cf,
         goto out;
       }
       cf->connected = TRUE;
-      cf->conn->alpn = CURL_HTTP_VERSION_3;
       *done = TRUE;
       connkeep(cf->conn, "HTTP/3 default");
     }
@@ -1568,6 +1567,12 @@ static CURLcode cf_quiche_query(struct Curl_cfilter *cf,
                                    (query == CF_QUERY_SSL_INFO), info))
       return CURLE_OK;
     break;
+  }
+  case CF_QUERY_ALPN_NEGOTIATED: {
+    const char **palpn = pres2;
+    DEBUGASSERT(palpn);
+    *palpn = cf->connected ? "h3" : NULL;
+    return CURLE_OK;
   }
   default:
     break;

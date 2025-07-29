@@ -1400,17 +1400,15 @@ void Curl_verboseconnect(struct Curl_easy *data,
           conn->primary.remote_port);
 #ifndef CURL_DISABLE_HTTP
     if(conn->handler->protocol & PROTO_FAMILY_HTTP) {
-      switch(conn->alpn) {
-      case CURL_HTTP_VERSION_3:
-        infof(data, "using HTTP/3");
-        break;
-      case CURL_HTTP_VERSION_2:
-        infof(data, "using HTTP/2");
-        break;
-      default:
+      const char *alpn = Curl_conn_get_alpn_negotiated(data, conn);
+      if(!alpn || !strcmp("http/1.1", alpn) || !strcmp("http/1.0", alpn))
         infof(data, "using HTTP/1.x");
-        break;
-      }
+      else if(!strcmp("h2", alpn))
+        infof(data, "using HTTP/2");
+      else if(!strcmp("h3", alpn))
+        infof(data, "using HTTP/3");
+      else
+        infof(data, "using ALPN protocol '%s'", alpn);
     }
 #endif
 }
@@ -2252,7 +2250,7 @@ static char *detect_proxy(struct Curl_easy *data,
  */
 static CURLcode parse_proxy(struct Curl_easy *data,
                             struct connectdata *conn, char *proxy,
-                            curl_proxytype proxytype)
+                            long proxytype)
 {
   char *portptr = NULL;
   int port = -1;
@@ -2570,7 +2568,7 @@ static CURLcode create_conn_helper_init_proxy(struct Curl_easy *data,
    * connection that may exist registered to the same proxy host.
    ***********************************************************************/
   if(proxy || socksproxy) {
-    curl_proxytype ptype = (curl_proxytype)conn->http_proxy.proxytype;
+    long ptype = conn->http_proxy.proxytype;
     if(proxy) {
       result = parse_proxy(data, conn, proxy, ptype);
       Curl_safefree(proxy); /* parse_proxy copies the proxy string */

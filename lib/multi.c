@@ -596,17 +596,21 @@ static void multi_done_locked(struct connectdata *conn,
 #endif
      ) || conn->bits.close
        || (mdctx->premature && !Curl_conn_is_multiplex(conn, FIRSTSOCKET))) {
+#ifndef CURL_DISABLE_VERBOSE_STRINGS
     CURL_TRC_M(data, "multi_done, terminating conn #%" FMT_OFF_T " to %s:%d, "
                "forbid=%d, close=%d, premature=%d, conn_multiplex=%d",
                conn->connection_id, host, port, data->set.reuse_forbid,
                conn->bits.close, mdctx->premature,
                Curl_conn_is_multiplex(conn, FIRSTSOCKET));
+#endif
     connclose(conn, "disconnecting");
     Curl_conn_terminate(data, conn, mdctx->premature);
   }
   else if(!Curl_conn_get_max_concurrent(data, conn, FIRSTSOCKET)) {
+#ifndef CURL_DISABLE_VERBOSE_STRINGS
     CURL_TRC_M(data, "multi_done, conn #%" FMT_OFF_T " to %s:%d was shutdown"
                " by server, not reusing", conn->connection_id, host, port);
+#endif
     connclose(conn, "server shutdown");
     Curl_conn_terminate(data, conn, mdctx->premature);
   }
@@ -615,8 +619,10 @@ static void multi_done_locked(struct connectdata *conn,
     if(Curl_cpool_conn_now_idle(data, conn)) {
       /* connection kept in the cpool */
       data->state.lastconnect_id = conn->connection_id;
+#ifndef CURL_DISABLE_VERBOSE_STRINGS
       infof(data, "Connection #%" FMT_OFF_T " to host %s:%d left intact",
             conn->connection_id, host, port);
+#endif
     }
     else {
       /* connection was removed from the cpool and destroyed. */
@@ -1121,11 +1127,13 @@ void Curl_multi_getsock(struct Curl_easy *data,
                  caller, ps->num, Curl_llist_count(&data->state.timeoutlist));
       break;
   }
-  if(expect_sockets && !ps->num &&
+  if(expect_sockets && !ps->num && data->multi &&
+     !Curl_uint_bset_contains(&data->multi->dirty, data->mid) &&
      !Curl_llist_count(&data->state.timeoutlist) &&
      !Curl_cwriter_is_paused(data) && !Curl_creader_is_paused(data) &&
      Curl_conn_is_ip_connected(data, FIRSTSOCKET)) {
     /* We expected sockets for POLL monitoring, but none are set.
+     * We are not dirty (and run anyway).
      * We are not waiting on any timer.
      * None of the READ/WRITE directions are paused.
      * We are connected to the server on IP level, at least. */
@@ -3664,9 +3672,13 @@ static void process_pending_handles(struct Curl_multi *multi)
   if(Curl_uint_bset_first(&multi->pending, &mid)) {
     do {
       struct Curl_easy *data = Curl_multi_get_easy(multi, mid);
-      DEBUGASSERT(data);
-      if(data)
+      if(data) {
         move_pending_to_connect(multi, data);
+        break;
+      }
+      /* transfer no longer known, should not happen */
+      Curl_uint_bset_remove(&multi->pending, mid);
+      DEBUGASSERT(0);
     }
     while(Curl_uint_bset_next(&multi->pending, mid, &mid));
   }

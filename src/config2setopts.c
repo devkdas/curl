@@ -662,7 +662,7 @@ static CURLcode ftp_setopts(struct OperationConfig *config, CURL *curl)
 
   /* new in curl 7.16.1 */
   if(config->ftp_ssl_ccc)
-    my_setopt_enum(curl, CURLOPT_FTP_SSL_CCC, (long)config->ftp_ssl_ccc_mode);
+    my_setopt_enum(curl, CURLOPT_FTP_SSL_CCC, config->ftp_ssl_ccc_mode);
 
   my_setopt_str(curl, CURLOPT_FTP_ACCOUNT, config->ftp_account);
 
@@ -760,7 +760,7 @@ static CURLcode proxy_setopts(struct OperationConfig *config, CURL *curl)
 
   /* new in libcurl 7.10.6 */
   if(config->proxyanyauth)
-    my_setopt_bitmask(curl, CURLOPT_PROXYAUTH, (long)CURLAUTH_ANY);
+    my_setopt_bitmask(curl, CURLOPT_PROXYAUTH, CURLAUTH_ANY);
   else if(config->proxynegotiate)
     my_setopt_bitmask(curl, CURLOPT_PROXYAUTH, CURLAUTH_GSSNEGOTIATE);
   else if(config->proxyntlm)
