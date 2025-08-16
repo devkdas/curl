@@ -205,6 +205,7 @@ DoT
 doxygen
 drftpd
 dsa
+DSN
 dtrace
 Dudka
 Dymond
@@ -229,6 +230,7 @@ else's
 encodings
 enctype
 endianness
+enums
 Engler
 enum
 epoll

@@ -42,7 +42,7 @@ static unsigned int WINAPI t3026_run_thread(void *ptr)
   return 0;
 }
 
-static CURLcode test_lib3026(char *URL)
+static CURLcode test_lib3026(const char *URL)
 {
 #if defined(CURL_WINDOWS_UWP) || defined(UNDER_CE)
   typedef HANDLE curl_win_thread_handle_t;
@@ -89,7 +89,7 @@ cleanup:
     if(results[i] != CURLE_OK) {
       curl_mfprintf(stderr, "%s:%d thread[%u]: curl_global_init() failed,"
                     "with code %d (%s)\n", __FILE__, __LINE__,
-                    i, (int) results[i], curl_easy_strerror(results[i]));
+                    i, results[i], curl_easy_strerror(results[i]));
       test_failure = TEST_ERR_MAJOR_BAD;
     }
   }
@@ -111,7 +111,7 @@ static void *t3026_run_thread(void *ptr)
   return NULL;
 }
 
-static CURLcode test_lib3026(char *URL)
+static CURLcode test_lib3026(const char *URL)
 {
   CURLcode results[NUM_THREADS];
   pthread_t tids[NUM_THREADS];
@@ -147,7 +147,7 @@ cleanup:
     if(results[i] != CURLE_OK) {
       curl_mfprintf(stderr, "%s:%d thread[%u]: curl_global_init() failed,"
                     "with code %d (%s)\n", __FILE__, __LINE__,
-                    i, (int) results[i], curl_easy_strerror(results[i]));
+                    i, results[i], curl_easy_strerror(results[i]));
       test_failure = TEST_ERR_MAJOR_BAD;
     }
   }
@@ -156,7 +156,7 @@ cleanup:
 }
 
 #else /* without pthread or Windows, this test doesn't work */
-static CURLcode test_lib3026(char *URL)
+static CURLcode test_lib3026(const char *URL)
 {
   curl_version_info_data *ver;
   (void)URL;

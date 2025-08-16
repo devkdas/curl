@@ -30,7 +30,7 @@
 
 #include "memdebug.h"
 
-static CURLcode test_lib583(char *URL)
+static CURLcode test_lib583(const char *URL)
 {
   int stillRunning;
   CURLM *multiHandle = NULL;
@@ -70,8 +70,8 @@ static CURLcode test_lib583(char *URL)
   curl_mfprintf(stderr, "curl_multi_remove_handle()...\n");
   mres = curl_multi_remove_handle(multiHandle, curl);
   if(mres) {
-    curl_mfprintf(stderr, "curl_multi_remove_handle() failed, "
-                  "with code %d\n", (int)mres);
+    curl_mfprintf(stderr, "curl_multi_remove_handle() failed, with code %d\n",
+                  mres);
     res = TEST_ERR_MULTI;
   }
   else

@@ -75,7 +75,7 @@
 #endif
 #endif
 
-#if defined(__MINGW32__) && \
+#if defined(__MINGW32__) && !defined(__MINGW32CE__) && \
   (!defined(__MINGW64_VERSION_MAJOR) || (__MINGW64_VERSION_MAJOR < 3))
 #error "Building curl requires mingw-w64 3.0 or later"
 #endif
@@ -1123,6 +1123,11 @@ int getpwuid_r(uid_t uid, struct passwd *pwd, char *buf,
 #endif
 
 #define USE_HTTP3
+#endif
+
+/* WebAssembly builds have TCP_NODELAY, but runtime support is missing. */
+#ifndef __EMSCRIPTEN__
+#define CURL_TCP_NODELAY_SUPPORTED
 #endif
 
 /* Certain Windows implementations are not aligned with what curl expects,

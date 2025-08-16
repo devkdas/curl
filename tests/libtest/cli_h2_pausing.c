@@ -25,6 +25,9 @@
  */
 #include "first.h"
 
+#include "testtrace.h"
+#include "memdebug.h"
+
 static void usage_h2_pausing(const char *msg)
 {
   if(msg)
@@ -55,29 +58,35 @@ static size_t cb(char *data, size_t size, size_t nmemb, void *clientp)
   (void)data;
   if(curl_easy_getinfo(handle->h, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T,
                        &totalsize) == CURLE_OK)
-    curl_mfprintf(stderr, "INFO: [%d] write, "
+    curl_mfprintf(stderr, "INFO: [%zu] write, "
                   "Content-Length %" CURL_FORMAT_CURL_OFF_T "\n",
-                  (int)handle->idx, totalsize);
+                  handle->idx, totalsize);
 
   if(!handle->resumed) {
     ++handle->paused;
-    curl_mfprintf(stderr, "INFO: [%d] write, PAUSING %d time on %lu bytes\n",
-                  (int)handle->idx, handle->paused, (long)realsize);
+    curl_mfprintf(stderr, "INFO: [%zu] write, PAUSING %d time on %zu bytes\n",
+                  handle->idx, handle->paused, realsize);
     assert(handle->paused == 1);
     return CURL_WRITEFUNC_PAUSE;
   }
   if(handle->fail_write) {
     ++handle->errored;
-    curl_mfprintf(stderr, "INFO: [%d] FAIL write of %lu bytes, %d time\n",
-                  (int)handle->idx, (long)realsize, handle->errored);
+    curl_mfprintf(stderr, "INFO: [%zu] FAIL write of %zu bytes, %d time\n",
+                  handle->idx, realsize, handle->errored);
     return CURL_WRITEFUNC_ERROR;
   }
-  curl_mfprintf(stderr, "INFO: [%d] write, accepting %lu bytes\n",
-                (int)handle->idx, (long)realsize);
+  curl_mfprintf(stderr, "INFO: [%zu] write, accepting %zu bytes\n",
+                handle->idx, realsize);
   return realsize;
 }
 
-static int test_h2_pausing(int argc, char *argv[])
+#define CLI_ERR()                                                             \
+  do {                                                                        \
+    curl_mfprintf(stderr, "something unexpected went wrong - bailing out!\n");\
+    return (CURLcode)2;                                                       \
+  } while(0)
+
+static CURLcode test_cli_h2_pausing(const char *URL)
 {
   struct handle handles[2];
   CURLM *multi_handle;
@@ -85,21 +94,24 @@ static int test_h2_pausing(int argc, char *argv[])
   size_t i;
   CURLMsg *msg;
   int rounds = 0;
-  int rc = 0;
+  CURLcode rc = CURLE_OK;
   CURLU *cu;
   struct curl_slist *resolve = NULL;
   char resolve_buf[1024];
-  char *url, *host = NULL, *port = NULL;
+  const char *url;
+  char *host = NULL, *port = NULL;
   int all_paused = 0;
   int resume_round = -1;
-  int http_version = CURL_HTTP_VERSION_2_0;
+  long http_version = CURL_HTTP_VERSION_2_0;
   int ch;
 
-  while((ch = cgetopt(argc, argv, "hV:")) != -1) {
+  (void)URL;
+
+  while((ch = cgetopt(test_argc, test_argv, "hV:")) != -1) {
     switch(ch) {
     case 'h':
       usage_h2_pausing(NULL);
-      return 2;
+      return (CURLcode)2;
     case 'V': {
       if(!strcmp("http/1.1", coptarg))
         http_version = CURL_HTTP_VERSION_1_1;
@@ -109,23 +121,23 @@ static int test_h2_pausing(int argc, char *argv[])
         http_version = CURL_HTTP_VERSION_3ONLY;
       else {
         usage_h2_pausing("invalid http version");
-        return 1;
+        return (CURLcode)1;
       }
       break;
     }
     default:
       usage_h2_pausing("invalid option");
-      return 1;
+      return (CURLcode)1;
     }
   }
-  argc -= coptind;
-  argv += coptind;
+  test_argc -= coptind;
+  test_argv += coptind;
 
-  if(argc != 1) {
+  if(test_argc != 1) {
     curl_mfprintf(stderr, "ERROR: need URL as argument\n");
-    return 2;
+    return (CURLcode)2;
   }
-  url = argv[0];
+  url = test_argv[0];
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
   curl_global_trace("ids,time,http/2,http/3");
@@ -133,19 +145,19 @@ static int test_h2_pausing(int argc, char *argv[])
   cu = curl_url();
   if(!cu) {
     curl_mfprintf(stderr, "out of memory\n");
-    return 1;
+    return (CURLcode)1;
   }
   if(curl_url_set(cu, CURLUPART_URL, url, 0)) {
     curl_mfprintf(stderr, "not a URL: '%s'\n", url);
-    return 1;
+    return (CURLcode)1;
   }
   if(curl_url_get(cu, CURLUPART_HOST, &host, 0)) {
     curl_mfprintf(stderr, "could not get host of '%s'\n", url);
-    return 1;
+    return (CURLcode)1;
   }
   if(curl_url_get(cu, CURLUPART_PORT, &port, 0)) {
     curl_mfprintf(stderr, "could not get port of '%s'\n", url);
-    return 1;
+    return (CURLcode)1;
   }
   memset(&resolve, 0, sizeof(resolve));
   curl_msnprintf(resolve_buf, sizeof(resolve_buf)-1, "%s:%s:127.0.0.1",
@@ -165,64 +177,64 @@ static int test_h2_pausing(int argc, char *argv[])
         != CURLE_OK ||
       curl_easy_setopt(handles[i].h, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK ||
       curl_easy_setopt(handles[i].h, CURLOPT_VERBOSE, 1L) != CURLE_OK ||
-      curl_easy_setopt(handles[i].h, CURLOPT_DEBUGFUNCTION, debug_cb)
+      curl_easy_setopt(handles[i].h, CURLOPT_DEBUGFUNCTION, cli_debug_cb)
         != CURLE_OK ||
       curl_easy_setopt(handles[i].h, CURLOPT_SSL_VERIFYPEER, 0L) != CURLE_OK ||
       curl_easy_setopt(handles[i].h, CURLOPT_RESOLVE, resolve) != CURLE_OK ||
       curl_easy_setopt(handles[i].h, CURLOPT_PIPEWAIT, 1L) ||
       curl_easy_setopt(handles[i].h, CURLOPT_URL, url) != CURLE_OK) {
-      ERR();
+      CLI_ERR();
     }
-    curl_easy_setopt(handles[i].h, CURLOPT_HTTP_VERSION, (long)http_version);
+    curl_easy_setopt(handles[i].h, CURLOPT_HTTP_VERSION, http_version);
   }
 
   multi_handle = curl_multi_init();
   if(!multi_handle)
-    ERR();
+    CLI_ERR();
 
   for(i = 0; i < CURL_ARRAYSIZE(handles); i++) {
     if(curl_multi_add_handle(multi_handle, handles[i].h) != CURLM_OK)
-      ERR();
+      CLI_ERR();
   }
 
   for(rounds = 0;; rounds++) {
     curl_mfprintf(stderr, "INFO: multi_perform round %d\n", rounds);
     if(curl_multi_perform(multi_handle, &still_running) != CURLM_OK)
-      ERR();
+      CLI_ERR();
 
     if(!still_running) {
       int as_expected = 1;
       curl_mfprintf(stderr, "INFO: no more handles running\n");
       for(i = 0; i < CURL_ARRAYSIZE(handles); i++) {
         if(!handles[i].paused) {
-          curl_mfprintf(stderr, "ERROR: [%d] NOT PAUSED\n", (int)i);
+          curl_mfprintf(stderr, "ERROR: [%zu] NOT PAUSED\n", i);
           as_expected = 0;
         }
         else if(handles[i].paused != 1) {
-          curl_mfprintf(stderr, "ERROR: [%d] PAUSED %d times!\n",
-                        (int)i, handles[i].paused);
+          curl_mfprintf(stderr, "ERROR: [%zu] PAUSED %d times!\n",
+                        i, handles[i].paused);
           as_expected = 0;
         }
         else if(!handles[i].resumed) {
-          curl_mfprintf(stderr, "ERROR: [%d] NOT resumed!\n", (int)i);
+          curl_mfprintf(stderr, "ERROR: [%zu] NOT resumed!\n", i);
           as_expected = 0;
         }
         else if(handles[i].errored != 1) {
-          curl_mfprintf(stderr, "ERROR: [%d] NOT errored once, %d instead!\n",
-                        (int)i, handles[i].errored);
+          curl_mfprintf(stderr, "ERROR: [%zu] NOT errored once, %d instead!\n",
+                        i, handles[i].errored);
           as_expected = 0;
         }
       }
       if(!as_expected) {
         curl_mfprintf(stderr, "ERROR: handles not in expected state "
                       "after %d rounds\n", rounds);
-        rc = 1;
+        rc = (CURLcode)1;
       }
       break;
     }
 
     if(curl_multi_poll(multi_handle, NULL, 0, 100, &numfds) != CURLM_OK)
-      ERR();
+      CLI_ERR();
 
     /* !checksrc! disable EQUALSNULL 1 */
     while((msg = curl_multi_info_read(multi_handle, &msgs_left)) != NULL) {
@@ -230,10 +242,11 @@ static int test_h2_pausing(int argc, char *argv[])
         for(i = 0; i < CURL_ARRAYSIZE(handles); i++) {
           if(msg->easy_handle == handles[i].h) {
             if(handles[i].paused != 1 || !handles[i].resumed) {
-              curl_mfprintf(stderr, "ERROR: [%d] done, pauses=%d, resumed=%d, "
-                            "result %d - wtf?\n", (int)i, handles[i].paused,
+              curl_mfprintf(stderr, "ERROR: [%zu] done, paused=%d, "
+                            "resumed=%d, result %d - wtf?\n", i,
+                            handles[i].paused,
                             handles[i].resumed, msg->data.result);
-              rc = 1;
+              rc = (CURLcode)1;
               goto out;
             }
           }
@@ -258,7 +271,7 @@ static int test_h2_pausing(int argc, char *argv[])
     if(resume_round > 0 && rounds == resume_round) {
       /* time to resume */
       for(i = 0; i < CURL_ARRAYSIZE(handles); i++) {
-        curl_mfprintf(stderr, "INFO: [%d] resumed\n", (int)i);
+        curl_mfprintf(stderr, "INFO: [%zu] resumed\n", i);
         handles[i].resumed = 1;
         curl_easy_pause(handles[i].h, CURLPAUSE_CONT);
       }

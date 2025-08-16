@@ -111,6 +111,7 @@ my %api = (
     'curl_multi_cleanup' => 'API',
     'curl_multi_fdset' => 'API',
     'curl_multi_get_handles' => 'API',
+    'curl_multi_get_offt' => 'API',
     'curl_multi_info_read' => 'API',
     'curl_multi_init' => 'API',
     'curl_multi_perform' => 'API',
@@ -154,6 +155,7 @@ my %api = (
     'curl_ws_meta' => 'API',
     'curl_ws_recv' => 'API',
     'curl_ws_send' => 'API',
+    'curl_ws_start_frame' => 'API',
 
     # the following functions are provided globally in debug builds
     'curl_easy_perform_ev' => 'debug-build',

@@ -280,6 +280,10 @@ AS_HELP_STRING([--with-rustls=PATH],[where to look for Rustls, PATH points to th
   fi
 ])
 
+AC_PATH_PROG(PERL, perl,, $PATH:/usr/local/bin/perl:/usr/bin/:/usr/local/bin)
+AC_SUBST(PERL)
+AM_CONDITIONAL(PERL, test -n "$PERL")
+
 TEST_NGHTTPX=nghttpx
 AC_ARG_WITH(test-nghttpx,dnl
 AS_HELP_STRING([--with-test-nghttpx=PATH],[where to find nghttpx for testing]),
@@ -372,35 +376,35 @@ fi
 AC_SUBST(HTTPD)
 AC_SUBST(APXS)
 
-dnl we'd like a sockd as test server
+dnl we'd like a dante as test socks server
 dnl
-SOCKD_ENABLED="maybe"
-AC_ARG_WITH(test-sockd, [AS_HELP_STRING([--with-test-sockd=PATH],
-                         [where to find dante sockd for testing])],
-  [request_sockd=$withval], [request_sockd=check])
-if test x"$request_sockd" = "xcheck" -o x"$request_sockd" = "xyes"; then
-  if test -x "/usr/sbin/sockd"; then
+DANTED_ENABLED="maybe"
+AC_ARG_WITH(test-danted, [AS_HELP_STRING([--with-test-danted=PATH],
+                         [where to find danted socks daemon for testing])],
+  [request_danted=$withval], [request_danted=check])
+if test x"$request_danted" = "xcheck" -o x"$request_danted" = "xyes"; then
+  if test -x "/usr/sbin/danted"; then
     # common location on distros (debian/ubuntu)
-    SOCKD="/usr/sbin/sockd"
+    DANTED="/usr/sbin/danted"
   else
-    AC_PATH_PROG([SOCKD], [sockd])
-    if test "x$SOCKD" = "x"; then
-      AC_PATH_PROG([SOCKD], [sockd])
+    AC_PATH_PROG([DANTED], [danted])
+    if test "x$DANTED" = "x"; then
+      AC_PATH_PROG([DANTED], [danted])
     fi
   fi
-elif test x"$request_sockd" != "xno"; then
-  SOCKD="${request_sockd}"
-  if test ! -x "${SOCKD}"; then
-    AC_MSG_NOTICE([sockd not found as ${SOCKD}, sockd tests disabled])
-    SOCKD_ENABLED="no"
+elif test x"$request_danted" != "xno"; then
+  DANTED="${request_danted}"
+  if test ! -x "${DANTED}"; then
+    AC_MSG_NOTICE([danted not found as ${DANTED}, danted tests disabled])
+    DANTED_ENABLED="no"
   else
-    AC_MSG_NOTICE([using SOCKD=$SOCKD for tests])
+    AC_MSG_NOTICE([using DANTED=$DANTED for tests])
   fi
 fi
-if test x"$SOCKD_ENABLED" = "xno"; then
-  SOCKD=""
+if test x"$DANTED_ENABLED" = "xno"; then
+  DANTED=""
 fi
-AC_SUBST(SOCKD)
+AC_SUBST(DANTED)
 
 dnl the nghttpx we might use in httpd testing
 if test "x$TEST_NGHTTPX" != "x" -a "x$TEST_NGHTTPX" != "xnghttpx"; then
@@ -659,7 +663,10 @@ AS_HELP_STRING([--disable-unity],[Disable unity (default)]),
   esac ],
     AC_MSG_RESULT([no])
 )
-
+if test -z "$PERL" -a "$want_unity" = 'yes'; then
+  AC_MSG_WARN([perl was not found. Will not enable unity.])
+  want_unity='no'
+fi
 AM_CONDITIONAL([USE_UNITY], [test "$want_unity" = 'yes'])
 
 dnl ************************************************************
@@ -1056,7 +1063,10 @@ AS_HELP_STRING([--disable-docs],[Disable documentation]),
     AC_MSG_RESULT(yes)
     BUILD_DOCS=1
 )
-
+if test -z "$PERL" -a "x$BUILD_DOCS" != "x0"; then
+  AC_MSG_WARN([perl was not found. Will not build documentation.])
+  BUILD_DOCS=0
+fi
 
 dnl ************************************************************
 dnl disable C code generation support
@@ -3013,7 +3023,7 @@ if test "$want_idn" = "yes"; then
     tst_links_libidn="no"
   ])
   #
-  AC_CHECK_HEADERS( idn2.h )
+  AC_CHECK_HEADERS(idn2.h)
 
   if test "$tst_links_libidn" = "yes"; then
     AC_DEFINE(HAVE_LIBIDN2, 1, [Define to 1 if you have the `idn2' library (-lidn2).])
@@ -3894,6 +3904,10 @@ case "$OPT_ZSH_FPATH" in
     AC_SUBST(ZSH_FUNCTIONS_DIR)
     ;;
 esac
+if test -z "$PERL" -a x"$ZSH_FUNCTIONS_DIR" != x; then
+  AC_MSG_WARN([perl was not found. Will not install zsh completions.])
+  ZSH_FUNCTIONS_DIR=''
+fi
 AM_CONDITIONAL(USE_ZSH_COMPLETION, test x"$ZSH_FUNCTIONS_DIR" != x)
 
 dnl **********************************************************************
@@ -3925,6 +3939,10 @@ case "$OPT_FISH_FPATH" in
     AC_SUBST(FISH_FUNCTIONS_DIR)
     ;;
 esac
+if test -z "$PERL" -a x"$FISH_FUNCTIONS_DIR" != x; then
+  AC_MSG_WARN([perl was not found. Will not install fish completions.])
+  FISH_FUNCTIONS_DIR=''
+fi
 AM_CONDITIONAL(USE_FISH_COMPLETION, test x"$FISH_FUNCTIONS_DIR" != x)
 
 dnl Now check for the very most basic headers. Then we can use these
@@ -4218,16 +4236,6 @@ fi
 
 CURL_CHECK_NONBLOCKING_SOCKET
 
-AC_PATH_PROG(PERL, perl,,
-  $PATH:/usr/local/bin/perl:/usr/bin/:/usr/local/bin)
-AC_SUBST(PERL)
-
-if test "x$BUILD_DOCS" != "x0" -o "x$USE_MANUAL" != "x0" -o "x$CURL_CA_EMBED" != "x"; then
-  if test -z "$PERL"; then
-    AC_MSG_ERROR([perl was not found, needed for docs, manual and CA embed])
-  fi
-fi
-
 dnl set variable for use in automakefile(s)
 AM_CONDITIONAL(BUILD_DOCS, test x"$BUILD_DOCS" = x1)
 
@@ -4351,44 +4359,46 @@ AS_HELP_STRING([--disable-verbose],[Disable verbose strings]),
     AC_MSG_RESULT(yes)
 )
 
-dnl ************************************************************
-dnl enable SSPI support
-dnl
-AC_MSG_CHECKING([whether to enable SSPI support (Windows native builds only)])
-AC_ARG_ENABLE(sspi,
-AS_HELP_STRING([--enable-sspi],[Enable SSPI])
-AS_HELP_STRING([--disable-sspi],[Disable SSPI]),
-[ case "$enableval" in
-  yes)
-    if test "$curl_cv_native_windows" = "yes"; then
-      AC_MSG_RESULT(yes)
-      AC_DEFINE(USE_WINDOWS_SSPI, 1, [to enable SSPI support])
-      USE_WINDOWS_SSPI=1
-      curl_sspi_msg="enabled"
-    else
-      AC_MSG_RESULT(no)
-      AC_MSG_WARN([--enable-sspi Ignored. Only supported on native Windows builds.])
-    fi
-    ;;
-  *)
-    if test "x$SCHANNEL_ENABLED" = "x1"; then
-      # --with-schannel implies --enable-sspi
-      AC_MSG_RESULT(yes)
-    else
-      AC_MSG_RESULT(no)
-    fi
-    ;;
-  esac ],
-    if test "x$SCHANNEL_ENABLED" = "x1"; then
-      # --with-schannel implies --enable-sspi
-      AC_MSG_RESULT(yes)
-    else
-      AC_MSG_RESULT(no)
-    fi
-)
+if test "$curl_cv_winuwp" != 'yes'; then
+  dnl ************************************************************
+  dnl enable SSPI support
+  dnl
+  AC_MSG_CHECKING([whether to enable SSPI support (Windows native builds only)])
+  AC_ARG_ENABLE(sspi,
+  AS_HELP_STRING([--enable-sspi],[Enable SSPI])
+  AS_HELP_STRING([--disable-sspi],[Disable SSPI]),
+  [ case "$enableval" in
+    yes)
+      if test "$curl_cv_native_windows" = "yes"; then
+        AC_MSG_RESULT(yes)
+        AC_DEFINE(USE_WINDOWS_SSPI, 1, [to enable SSPI support])
+        USE_WINDOWS_SSPI=1
+        curl_sspi_msg="enabled"
+      else
+        AC_MSG_RESULT(no)
+        AC_MSG_WARN([--enable-sspi Ignored. Only supported on native Windows builds.])
+      fi
+      ;;
+    *)
+      if test "x$SCHANNEL_ENABLED" = "x1"; then
+        # --with-schannel implies --enable-sspi
+        AC_MSG_RESULT(yes)
+      else
+        AC_MSG_RESULT(no)
+      fi
+      ;;
+    esac ],
+      if test "x$SCHANNEL_ENABLED" = "x1"; then
+        # --with-schannel implies --enable-sspi
+        AC_MSG_RESULT(yes)
+      else
+        AC_MSG_RESULT(no)
+      fi
+  )
 
-if test "x$USE_WINDOWS_SSPI" = "x1"; then
-  LIBS="-lsecur32 $LIBS"
+  if test "x$USE_WINDOWS_SSPI" = "x1"; then
+    LIBS="-lsecur32 $LIBS"
+  fi
 fi
 
 dnl ************************************************************
@@ -5463,7 +5473,6 @@ AC_CONFIG_FILES([\
   tests/libtest/Makefile \
   tests/unit/Makefile \
   tests/tunit/Makefile \
-  tests/client/Makefile \
   tests/http/config.ini \
   tests/http/Makefile \
   packages/Makefile \
