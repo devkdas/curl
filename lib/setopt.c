@@ -1273,6 +1273,9 @@ static CURLcode setopt_long(struct Curl_easy *data, CURLoption option,
     s->ws_no_auto_pong = (bool)(arg & CURLWS_NOAUTOPONG);
     break;
 #endif
+  case CURLOPT_QUICK_EXIT:
+    data->set.quick_exit = !!arg;
+    break;
   case CURLOPT_QUIC_VERSION:
     if(arg < 0 || arg > 2) /* 0: default, 1: v1, 2: v2 */
       return CURLE_BAD_FUNCTION_ARGUMENT;
