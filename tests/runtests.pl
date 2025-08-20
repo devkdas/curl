@@ -83,6 +83,7 @@ BEGIN {
 use Digest::MD5 qw(md5);
 use List::Util 'sum';
 use I18N::Langinfo qw(langinfo CODESET);
+use POSIX qw(setlocale LC_ALL);
 
 use serverhelp qw(
     server_exe
@@ -90,9 +91,6 @@ use serverhelp qw(
 use pathhelp qw(
     exe_ext
     sys_native_current_path
-    );
-use processhelp qw(
-    portable_sleep
     );
 
 use appveyor;
@@ -484,6 +482,25 @@ sub parseprotocols {
     push @protocols, 'none';
 }
 
+#######################################################################
+# Check if the operating environment supports UTF-8.
+sub is_utf8_supported {
+    my $result;
+    my $old_LC_ALL;
+    my $was_defined = defined $ENV{'LC_ALL'};
+    if($was_defined) {
+        $old_LC_ALL = $ENV{'LC_ALL'};
+    }
+    setlocale(LC_ALL, $ENV{'LC_ALL'} = "C.UTF-8");
+    $result = lc(langinfo(CODESET())) eq "utf-8";
+    if($was_defined) {
+        $ENV{'LC_ALL'} = $old_LC_ALL;
+    }
+    else {
+        delete $ENV{'LC_ALL'};
+    }
+    return $result;
+}
 
 #######################################################################
 # Check & display information about curl and the host the test suite runs on.
@@ -808,7 +825,10 @@ sub checksystemfeatures {
     # Use this as a proxy for any cryptographic authentication
     $feature{"crypto"} = $feature{"NTLM"} || $feature{"Kerberos"} || $feature{"SPNEGO"};
     $feature{"local-http"} = servers::localhttp();
-    $feature{"codeset-utf8"} = lc(langinfo(CODESET())) eq "utf-8";
+    $feature{"codeset-utf8"} = is_utf8_supported();
+    if($feature{"codeset-utf8"}) {
+        $ENV{'CURL_TEST_HAVE_CODESET_UTF8'} = 1;
+    }
 
     # make each protocol an enabled "feature"
     for my $p (@protocols) {
@@ -842,18 +862,20 @@ sub checksystemfeatures {
     }
 
     # display summary information about curl and the test host
-    logmsg ("********* System characteristics ******** \n",
-            "* $curl\n",
-            "* $libcurl\n",
-            "* Protocols: $proto\n",
-            "* Features: $feat\n",
-            "* Disabled: $dis\n",
-            "* Host: $hostname\n",
-            "* System: $hosttype\n",
-            "* OS: $hostos\n",
-            "* Perl: $^V ($^X)\n",
-            "* diff: $havediff\n",
-            "* Args: $args\n");
+    logmsg("********* System characteristics ******** \n",
+           "* $curl\n",
+           "* $libcurl\n",
+           "* Protocols: $proto\n",
+           "* Features: $feat\n",
+           "* Disabled: $dis\n",
+           "* Host: $hostname\n",
+           "* System: $hosttype\n");
+    if($ci) {
+        logmsg("* OS: $hostos\n",
+               "* Perl: $^V ($^X)\n",
+               "* diff: $havediff\n");
+    }
+    logmsg("* Args: $args\n");
 
     if($jobs) {
         # Only show if not the default for now
@@ -867,12 +889,16 @@ sub checksystemfeatures {
         $feature{"TrackMemory"} = 0;
     }
 
-    logmsg sprintf("* Env: %s%s%s%s", $valgrind?"Valgrind ":"",
-                   $run_duphandle?"test-duphandle ":"",
-                   $run_event_based?"event-based ":"",
-                   $nghttpx_h3);
-    logmsg sprintf("%s\n", $libtool?"Libtool ":"");
-    logmsg ("* Seed: $randseed\n");
+    my $env = sprintf("%s%s%s%s%s",
+                      $valgrind?"Valgrind ":"",
+                      $run_duphandle?"test-duphandle ":"",
+                      $run_event_based?"event-based ":"",
+                      $nghttpx_h3,
+                      $libtool?"Libtool ":"");
+    if($env) {
+        logmsg "* Env: $env\n";
+    }
+    logmsg "* Seed: $randseed\n";
 }
 
 #######################################################################
@@ -1645,6 +1671,29 @@ sub singletest_check {
         }
     }
 
+    my @dnsd = getpart("verify", "dns");
+    if(@dnsd) {
+        # we're supposed to verify a dynamically generated file!
+        my %hash = getpartattr("verify", "dns");
+        my $hostname=$hash{'host'};
+
+        # Verify the sent DNS requests
+        my @out = loadarray("$logdir/dnsd.input");
+        my @sverify = sort @dnsd;
+        my @sout = sort @out;
+
+        if($hostname) {
+            # when a hostname is set, we filter out requests to just this
+            # pattern
+            @sout = grep {/$hostname/} @sout;
+        }
+
+        $res = compare($runnerid, $testnum, $testname, "DNS", \@sout, \@sverify);
+        if($res) {
+            return -1;
+        }
+    }
+
     # accept multiple comma-separated error codes
     my @splerr = split(/ *, */, $errorcode);
     my $errok;
@@ -1699,7 +1748,7 @@ sub singletest_check {
                 $ok .= "m";
             }
             my @more=`$memanalyze -v "$logdir/$MEMDUMP"`;
-            my $allocs;
+            my $allocs = 0;
             my $max = 0;
             for(@more) {
                 if(/^Allocations: (\d+)/) {
@@ -2400,6 +2449,9 @@ while(@ARGV) {
         # lists the test case names only
         $listonly=1;
     }
+    elsif($ARGV[0] eq "--ci") {
+        $ci=1;
+    }
     elsif($ARGV[0] =~ /^-j(.*)/) {
         # parallel jobs
         $jobs=1;
@@ -2454,6 +2506,7 @@ Usage: runtests.pl [options] [test selection(s)]
   -ac path use this curl only to talk to APIs (currently only CI test APIs)
   -am      automake style output PASS/FAIL: [number] [name]
   -c path  use this curl executable
+  --ci     show extra info useful in for CI runs (e.g. buildinfo.txt dump)
   -d       display server debug info
   -e, --test-event  event-based execution
   --test-duphandle  duplicate handles before use
@@ -2641,7 +2694,7 @@ if(!$listonly) {
 #######################################################################
 # Output information about the curl build
 #
-if(!$listonly) {
+if(!$listonly && $ci) {
     if(open(my $fd, "<", "../buildinfo.txt")) {
         while(my $line = <$fd>) {
             chomp $line;
@@ -3124,8 +3177,8 @@ foreach my $runnerid (values %runnerids) {
 # Wait for servers to stop
 my $unexpected;
 foreach my $runnerid (values %runnerids) {
-    my ($rid, $unexpect, $logs) = runnerar($runnerid);
-    $unexpected ||= $unexpect;
+    my ($rid, $unexpected_for_runner, $logs) = runnerar($runnerid);
+    $unexpected ||= $unexpected_for_runner;
     logmsg $logs;
 }
 

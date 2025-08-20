@@ -107,7 +107,7 @@ static curl_simple_lock s_lock = CURL_SIMPLE_LOCK_INIT;
  * ways, but at this point it must be defined as the system-supplied strdup
  * so the callback pointer is initialized correctly.
  */
-#if defined(UNDER_CE)
+#ifdef UNDER_CE
 #define system_strdup _strdup
 #elif !defined(HAVE_STRDUP)
 #define system_strdup Curl_strdup
@@ -465,8 +465,8 @@ static int events_socket(CURL *easy,      /* easy handle */
   bool found = FALSE;
   struct Curl_easy *data = easy;
 
-#if defined(CURL_DISABLE_VERBOSE_STRINGS)
-  (void) easy;
+#ifdef CURL_DISABLE_VERBOSE_STRINGS
+  (void)easy;
 #endif
   (void)socketp;
 
@@ -822,7 +822,6 @@ static CURLcode easy_perform(struct Curl_easy *data, bool events)
   return result;
 }
 
-
 /*
  * curl_easy_perform() is the external interface that performs a blocking
  * transfer as previously setup.
@@ -841,7 +840,6 @@ CURLcode curl_easy_perform_ev(struct Curl_easy *data)
 {
   return easy_perform(data, TRUE);
 }
-
 #endif
 
 /*
@@ -950,7 +948,11 @@ static void dupeasy_meta_freeentry(void *p)
 CURL *curl_easy_duphandle(CURL *d)
 {
   struct Curl_easy *data = d;
-  struct Curl_easy *outcurl = calloc(1, sizeof(struct Curl_easy));
+  struct Curl_easy *outcurl = NULL;
+
+  if(!GOOD_EASY_HANDLE(data))
+    goto fail;
+  outcurl = calloc(1, sizeof(struct Curl_easy));
   if(!outcurl)
     goto fail;
 
@@ -1074,6 +1076,9 @@ fail:
 void curl_easy_reset(CURL *d)
 {
   struct Curl_easy *data = d;
+  if(!GOOD_EASY_HANDLE(data))
+    return;
+
   Curl_req_hard_reset(&data->req, data);
   Curl_hash_clean(&data->meta_hash);
 
@@ -1097,6 +1102,7 @@ void curl_easy_reset(CURL *d)
   data->progress.hide = TRUE;
   data->state.current_speed = -1; /* init to negative == impossible */
   data->state.retrycount = 0;     /* reset the retry counter */
+  data->state.recent_conn_id = -1; /* clear remembered connection id */
 
   /* zero out authentication data: */
   memset(&data->state.authhost, 0, sizeof(struct auth));
@@ -1154,13 +1160,15 @@ CURLcode curl_easy_pause(CURL *d, int action)
 
   /* If not completely pausing both directions now, run again in any case. */
   if(!Curl_xfer_is_blocked(data)) {
-    Curl_expire(data, 0, EXPIRE_RUN_NOW);
     /* reset the too-slow time keeper */
     data->state.keeps_speed.tv_sec = 0;
-    /* On changes, tell application to update its timers. */
-    if(changed && data->multi) {
-      if(Curl_update_timer(data->multi) && !result)
-        result = CURLE_ABORTED_BY_CALLBACK;
+    if(data->multi) {
+      Curl_multi_mark_dirty(data); /* make it run */
+      /* On changes, tell application to update its timers. */
+      if(changed) {
+        if(Curl_update_timer(data->multi) && !result)
+          result = CURLE_ABORTED_BY_CALLBACK;
+      }
     }
   }
 
@@ -1213,6 +1221,8 @@ CURLcode curl_easy_recv(CURL *d, void *buffer, size_t buflen, size_t *n)
   struct connectdata *c;
   struct Curl_easy *data = d;
 
+  if(!GOOD_EASY_HANDLE(data))
+    return CURLE_BAD_FUNCTION_ARGUMENT;
   if(Curl_is_in_callback(data))
     return CURLE_RECURSIVE_API_CALL;
 
@@ -1288,6 +1298,8 @@ CURLcode curl_easy_send(CURL *d, const void *buffer, size_t buflen, size_t *n)
   size_t written = 0;
   CURLcode result;
   struct Curl_easy *data = d;
+  if(!GOOD_EASY_HANDLE(data))
+    return CURLE_BAD_FUNCTION_ARGUMENT;
   if(Curl_is_in_callback(data))
     return CURLE_RECURSIVE_API_CALL;
 
@@ -1317,7 +1329,7 @@ CURLcode curl_easy_ssls_import(CURL *d, const char *session_key,
                                const unsigned char *shmac, size_t shmac_len,
                                const unsigned char *sdata, size_t sdata_len)
 {
-#ifdef USE_SSLS_EXPORT
+#if defined(USE_SSL) && defined(USE_SSLS_EXPORT)
   struct Curl_easy *data = d;
   if(!GOOD_EASY_HANDLE(data))
     return CURLE_BAD_FUNCTION_ARGUMENT;
@@ -1338,7 +1350,7 @@ CURLcode curl_easy_ssls_export(CURL *d,
                                curl_ssls_export_cb *export_fn,
                                void *userptr)
 {
-#ifdef USE_SSLS_EXPORT
+#if defined(USE_SSL) && defined(USE_SSLS_EXPORT)
   struct Curl_easy *data = d;
   if(!GOOD_EASY_HANDLE(data))
     return CURLE_BAD_FUNCTION_ARGUMENT;

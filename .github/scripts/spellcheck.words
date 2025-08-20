@@ -205,6 +205,7 @@ DoT
 doxygen
 drftpd
 dsa
+DSN
 dtrace
 Dudka
 Dymond
@@ -229,6 +230,7 @@ else's
 encodings
 enctype
 endianness
+enums
 Engler
 enum
 epoll
@@ -771,6 +773,7 @@ smtp
 smtps
 SMTPS
 SNI
+sockd
 socketopen
 socketpair
 sockopt

@@ -178,7 +178,7 @@ wssl_tls13_secret_callback(SSL *ssl, int id, const unsigned char *secret,
   Curl_tls_keylog_write(label, client_random, secret, secretSz);
   return 0;
 }
-#endif /* defined(HAVE_SECRET_CALLBACK) && defined(WOLFSSL_TLS13) */
+#endif /* HAVE_SECRET_CALLBACK && WOLFSSL_TLS13 */
 
 static void wssl_log_tls12_secret(WOLFSSL *ssl)
 {
@@ -243,12 +243,12 @@ static const struct group_name_map gnm[] = {
   { WOLFSSL_ML_KEM_512, "ML_KEM_512" },
   { WOLFSSL_ML_KEM_768, "ML_KEM_768" },
   { WOLFSSL_ML_KEM_1024, "ML_KEM_1024" },
-  { WOLFSSL_P256_ML_KEM_512, "P256_ML_KEM_512" },
-  { WOLFSSL_P384_ML_KEM_768, "P384_ML_KEM_768" },
-  { WOLFSSL_P521_ML_KEM_1024, "P521_ML_KEM_1024" },
-  { WOLFSSL_P256_ML_KEM_768, "P256_ML_KEM_768" },
-  { WOLFSSL_P384_ML_KEM_1024, "P384_ML_KEM_1024" },
-  { WOLFSSL_X25519_ML_KEM_768, "X25519_ML_KEM_768" },
+  { WOLFSSL_SECP256R1MLKEM512, "SecP256r1MLKEM512" },
+  { WOLFSSL_SECP384R1MLKEM768, "SecP384r1MLKEM768" },
+  { WOLFSSL_SECP521R1MLKEM1024, "SecP521r1MLKEM1024" },
+  { WOLFSSL_SECP256R1MLKEM768, "SecP256r1MLKEM768" },
+  { WOLFSSL_SECP384R1MLKEM1024, "SecP384r1MLKEM1024" },
+  { WOLFSSL_X25519MLKEM768, "X25519MLKEM768" },
   { 0, NULL }
 };
 #endif
@@ -931,7 +931,7 @@ wssl_legacy_CTX_set_min_proto_version(WOLFSSL_CTX* ctx, int version)
 static int
 wssl_legacy_CTX_set_max_proto_version(WOLFSSL_CTX* ctx, int version)
 {
-  (void) ctx, (void) version;
+  (void)ctx, (void)version;
   return WOLFSSL_NOT_IMPLEMENTED;
 }
 #define wolfSSL_CTX_set_min_proto_version wssl_legacy_CTX_set_min_proto_version
@@ -964,6 +964,7 @@ CURLcode Curl_wssl_ctx_init(struct wssl_ctx *wctx,
   size_t idx = 0;
 #endif
   CURLcode result = CURLE_FAILED_INIT;
+  unsigned char transport;
 
   DEBUGASSERT(!wctx->ssl_ctx);
   DEBUGASSERT(!wctx->ssl);
@@ -973,6 +974,8 @@ CURLcode Curl_wssl_ctx_init(struct wssl_ctx *wctx,
     goto out;
   }
   Curl_alpn_copy(&alpns, alpns_requested);
+  DEBUGASSERT(cf->next);
+  transport = Curl_conn_cf_get_transport(cf->next, data);
 
 #if LIBWOLFSSL_VERSION_HEX < 0x04002000 /* 4.2.0 (2019) */
   req_method = wolfSSLv23_client_method();
@@ -1103,7 +1106,7 @@ CURLcode Curl_wssl_ctx_init(struct wssl_ctx *wctx,
 #endif
 
   curves = conn_config->curves;
-  if(!curves && cf->conn->transport == TRNSPRT_QUIC)
+  if(!curves && (transport == TRNSPRT_QUIC))
     curves = (char *)CURL_UNCONST(QUIC_GROUPS);
 
   if(curves) {
@@ -1244,8 +1247,7 @@ CURLcode Curl_wssl_ctx_init(struct wssl_ctx *wctx,
   }
 #endif
 
-  if(ssl_config->primary.cache_session &&
-     cf->conn->transport != TRNSPRT_QUIC) {
+  if(ssl_config->primary.cache_session && (transport != TRNSPRT_QUIC)) {
     /* Register to get notified when a new session is received */
     wolfSSL_CTX_sess_set_new_cb(wctx->ssl_ctx, wssl_vtls_new_session_cb);
   }
@@ -1291,7 +1293,7 @@ CURLcode Curl_wssl_ctx_init(struct wssl_ctx *wctx,
 
   wolfSSL_set_app_data(wctx->ssl, ssl_user_data);
 #ifdef WOLFSSL_QUIC
-  if(cf->conn->transport == TRNSPRT_QUIC)
+  if(transport == TRNSPRT_QUIC)
     wolfSSL_set_quic_use_legacy_codepoint(wctx->ssl, 0);
 #endif
 
@@ -1540,6 +1542,7 @@ CURLcode Curl_wssl_verify_pinned(struct Curl_cfilter *cf,
     data->set.str[STRING_SSL_PINNEDPUBLICKEY];
 #else
   const char * const pinnedpubkey = data->set.str[STRING_SSL_PINNEDPUBLICKEY];
+  (void)cf;
 #endif
 
   if(pinnedpubkey) {
@@ -1756,7 +1759,7 @@ static CURLcode wssl_handshake(struct Curl_cfilter *cf,
       }
     }
 #ifdef USE_ECH_WOLFSSL
-    else if(-1 == detail) {
+    else if(detail == -1) {
       /* try access a retry_config ECHConfigList for tracing */
       byte echConfigs[1000];
       word32 echConfigsLen = 1000;
@@ -1964,7 +1967,7 @@ static void wssl_close(struct Curl_cfilter *cf, struct Curl_easy *data)
   struct ssl_connect_data *connssl = cf->ctx;
   struct wssl_ctx *wssl = (struct wssl_ctx *)connssl->backend;
 
-  (void) data;
+  (void)data;
 
   DEBUGASSERT(wssl);
 
@@ -2087,6 +2090,18 @@ static bool wssl_data_pending(struct Curl_cfilter *cf,
     return FALSE;
 }
 
+void Curl_wssl_report_handshake(struct Curl_easy *data,
+                                struct wssl_ctx *wssl)
+{
+#if (LIBWOLFSSL_VERSION_HEX >= 0x03009010)
+    infof(data, "SSL connection using %s / %s",
+          wolfSSL_get_version(wssl->ssl),
+          wolfSSL_get_cipher_name(wssl->ssl));
+#else
+    infof(data, "SSL connected");
+#endif
+}
+
 static CURLcode wssl_connect(struct Curl_cfilter *cf,
                              struct Curl_easy *data,
                              bool *done)
@@ -2160,16 +2175,9 @@ static CURLcode wssl_connect(struct Curl_cfilter *cf,
     }
 #endif /* HAVE_ALPN */
 
-#if (LIBWOLFSSL_VERSION_HEX >= 0x03009010)
-    infof(data, "SSL connection using %s / %s",
-          wolfSSL_get_version(wssl->ssl),
-          wolfSSL_get_cipher_name(wssl->ssl));
-#else
-    infof(data, "SSL connected");
-#endif
-
     connssl->connecting_state = ssl_connect_done;
     connssl->state = ssl_connection_complete;
+    Curl_wssl_report_handshake(data, wssl);
 
 #ifdef WOLFSSL_EARLY_DATA
     if(connssl->earlydata_state > ssl_earlydata_none) {
@@ -2232,12 +2240,12 @@ static CURLcode wssl_sha256sum(const unsigned char *tmp, /* input */
 }
 
 static void *wssl_get_internals(struct ssl_connect_data *connssl,
-                                CURLINFO info UNUSED_PARAM)
+                                CURLINFO info)
 {
   struct wssl_ctx *wssl = (struct wssl_ctx *)connssl->backend;
-  (void)info;
   DEBUGASSERT(wssl);
-  return wssl->ssl;
+  return info == CURLINFO_TLS_SESSION ?
+    (void *)wssl->ssl_ctx : (void *)wssl->ssl;
 }
 
 const struct Curl_ssl Curl_ssl_wolfssl = {

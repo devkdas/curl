@@ -21,32 +21,36 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "first.h"
 
-int main(int argc, char **argv)
-{
-  entry_func_t entry_func;
-  char *entry_name;
-  size_t tmp;
+/* Unset redefined system symbols. */
 
-  if(argc < 2) {
-    curl_mfprintf(stderr, "Pass clientname as first argument\n");
-    return 1;
-  }
+#undef strdup
+#undef malloc
+#undef calloc
+#undef realloc
+#undef free
+#undef send
+#undef recv
 
-  entry_name = argv[1];
-  entry_func = NULL;
-  for(tmp = 0; s_entries[tmp].ptr; ++tmp) {
-    if(strcmp(entry_name, s_entries[tmp].name) == 0) {
-      entry_func = s_entries[tmp].ptr;
-      break;
-    }
-  }
+#ifdef _WIN32
+#undef _tcsdup
+#endif
 
-  if(!entry_func) {
-    curl_mfprintf(stderr, "Test '%s' not found.\n", entry_name);
-    return 99;
-  }
+#undef socket
+#undef accept
+#ifdef HAVE_ACCEPT4
+#undef accept4
+#endif
+#ifdef HAVE_SOCKETPAIR
+#undef socketpair
+#endif
 
-  return entry_func(argc - 1, argv + 1);
-}
+#undef fopen
+#ifdef CURL_FOPEN
+#define fopen(fname, mode) CURL_FOPEN(fname, mode)
+#endif
+#undef fdopen
+#undef fclose
+
+#undef HEADER_CURL_MEMORY_H
+#undef HEADER_CURL_MEMDEBUG_H

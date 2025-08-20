@@ -33,13 +33,16 @@
 # --unit : built to support unit tests
 #
 
+use strict;
+use warnings;
+
 my $unittests;
-if($ARGV[0] eq "--unit") {
+if(@ARGV && $ARGV[0] eq "--unit") {
     $unittests = "tests/unit ";
     shift @ARGV;
 }
 
-my $file = $ARGV[0];
+my $file = $ARGV[0] || '';
 
 my %wl = (
     'Curl_xfer_write_resp' => 'internal api',
@@ -49,6 +52,9 @@ my %wl = (
     'Curl_creader_def_total_length' => 'internal api',
     'Curl_meta_reset' => 'internal api',
     'Curl_trc_dns' => 'internal api',
+    'curlx_base64_decode' => 'internal api',
+    'curlx_base64_encode' => 'internal api',
+    'curlx_base64url_encode' => 'internal api',
 );
 
 my %api = (
@@ -105,6 +111,7 @@ my %api = (
     'curl_multi_cleanup' => 'API',
     'curl_multi_fdset' => 'API',
     'curl_multi_get_handles' => 'API',
+    'curl_multi_get_offt' => 'API',
     'curl_multi_info_read' => 'API',
     'curl_multi_init' => 'API',
     'curl_multi_perform' => 'API',
@@ -148,6 +155,7 @@ my %api = (
     'curl_ws_meta' => 'API',
     'curl_ws_recv' => 'API',
     'curl_ws_send' => 'API',
+    'curl_ws_start_frame' => 'API',
 
     # the following functions are provided globally in debug builds
     'curl_easy_perform_ev' => 'debug-build',
@@ -175,7 +183,6 @@ open(N, "nm $file|") ||
 
 my %exist;
 my %uses;
-my $file;
 while(<N>) {
     my $l = $_;
     chomp $l;
@@ -201,7 +208,7 @@ while(<N>) {
 }
 close(N);
 
-my $err;
+my $err = 0;
 for(sort keys %exist) {
     #printf "%s is defined in %s, used by: %s\n", $_, $exist{$_}, $uses{$_};
     if(!$uses{$_}) {
