@@ -30,6 +30,9 @@
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
 #endif
+#ifdef USE_NGHTTP3
+#include <nghttp3/nghttp3.h>
+#endif
 #include "../urldata.h"
 #include "../bufq.h"
 #include "../curlx/dynbuf.h"
@@ -723,6 +726,62 @@ CURLcode Curl_conn_may_http3(struct Curl_easy *data,
 
   return CURLE_OK;
 }
+
+#if defined(USE_NGTCP2) || defined(USE_NGHTTP3)
+
+static void *vquic_ngtcp2_malloc(size_t size, void *user_data)
+{
+  (void)user_data;
+  return Curl_cmalloc(size);
+}
+
+static void vquic_ngtcp2_free(void *ptr, void *user_data)
+{
+  (void)user_data;
+  Curl_cfree(ptr);
+}
+
+static void *vquic_ngtcp2_calloc(size_t nmemb, size_t size, void *user_data)
+{
+  (void)user_data;
+  return Curl_ccalloc(nmemb, size);
+}
+
+static void *vquic_ngtcp2_realloc(void *ptr, size_t size, void *user_data)
+{
+  (void)user_data;
+  return Curl_crealloc(ptr, size);
+}
+
+#ifdef USE_NGTCP2
+static struct ngtcp2_mem vquic_ngtcp2_mem = {
+  NULL,
+  vquic_ngtcp2_malloc,
+  vquic_ngtcp2_free,
+  vquic_ngtcp2_calloc,
+  vquic_ngtcp2_realloc
+};
+struct ngtcp2_mem *Curl_ngtcp2_mem(void)
+{
+  return &vquic_ngtcp2_mem;
+}
+#endif
+
+#ifdef USE_NGHTTP3
+static struct nghttp3_mem vquic_nghttp3_mem = {
+  NULL,
+  vquic_ngtcp2_malloc,
+  vquic_ngtcp2_free,
+  vquic_ngtcp2_calloc,
+  vquic_ngtcp2_realloc
+};
+struct nghttp3_mem *Curl_nghttp3_mem(void)
+{
+  return &vquic_nghttp3_mem;
+}
+#endif
+
+#endif /* USE_NGTCP2 || USE_NGHTTP3 */
 
 #else /* CURL_DISABLE_HTTP || !USE_HTTP3 */
 
