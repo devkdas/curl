@@ -644,6 +644,10 @@ CURLcode Curl_async_pollset(struct Curl_easy *data, struct easy_pollset *ps)
   struct async_thrdd_ctx *thrdd = &data->state.async.thrdd;
   CURLcode result = CURLE_OK;
 
+#if !defined(USE_HTTPSRR_ARES) && defined(CURL_DISABLE_SOCKETPAIR)
+  (void)ps;
+#endif
+
 #ifdef USE_HTTPSRR_ARES
   if(thrdd->rr.channel) {
     result = Curl_ares_pollset(data, thrdd->rr.channel, ps);
@@ -655,12 +659,9 @@ CURLcode Curl_async_pollset(struct Curl_easy *data, struct easy_pollset *ps)
     return result;
 
 #ifndef CURL_DISABLE_SOCKETPAIR
-  if(thrdd->addr) {
-    /* return read fd to client for polling the DNS resolution status */
-    result = Curl_pollset_add_in(data, ps, thrdd->addr->sock_pair[0]);
-  }
-  else
-#endif
+  /* return read fd to client for polling the DNS resolution status */
+  result = Curl_pollset_add_in(data, ps, thrdd->addr->sock_pair[0]);
+#else
   {
     timediff_t milli;
     timediff_t ms = curlx_timediff(curlx_now(), thrdd->addr->start);
@@ -674,7 +675,7 @@ CURLcode Curl_async_pollset(struct Curl_easy *data, struct easy_pollset *ps)
       milli = 200;
     Curl_expire(data, milli, EXPIRE_ASYNC_NAME);
   }
-
+#endif
   return result;
 }
 
