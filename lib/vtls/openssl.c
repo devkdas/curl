@@ -232,14 +232,6 @@ typedef unsigned long sslerr_t;
   "ALL:!EXPORT:!EXPORT40:!EXPORT56:!aNULL:!LOW:!RC4:@STRENGTH"
 #endif
 
-#ifdef HAVE_OPENSSL_SRP
-/* the function exists */
-#ifdef USE_TLS_SRP
-/* the functionality is not disabled */
-#define USE_OPENSSL_SRP
-#endif
-#endif
-
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
 #define HAVE_RANDOM_INIT_BY_DEFAULT 1
 #endif
@@ -2512,7 +2504,7 @@ static CURLcode verifystatus(struct Curl_cfilter *cf,
                              struct ossl_ctx *octx)
 {
   int i, ocsp_status;
-#ifdef OPENSSL_IS_AWSLC
+#ifdef HAVE_BORINGSSL_LIKE
   const uint8_t *status;
 #else
   unsigned char *status;
@@ -4216,7 +4208,7 @@ CURLcode Curl_ossl_ctx_init(struct ossl_ctx *octx,
   }
 #endif
 
-#ifdef USE_OPENSSL_SRP
+#if defined(HAVE_OPENSSL_SRP) && defined(USE_TLS_SRP)
   if(ssl_config->primary.username && Curl_auth_allowed_to_host(data)) {
     char * const ssl_username = ssl_config->primary.username;
     char * const ssl_password = ssl_config->primary.password;
@@ -4239,7 +4231,7 @@ CURLcode Curl_ossl_ctx_init(struct ossl_ctx *octx,
       }
     }
   }
-#endif
+#endif /* HAVE_OPENSSL_SRP && USE_TLS_SRP */
 
   /* OpenSSL always tries to verify the peer, this only says whether it should
    * fail to connect if the verification fails, or if it should continue
@@ -5588,7 +5580,7 @@ size_t Curl_ossl_version(char *buffer, size_t size)
                    (ssleay_value >> 20) & 0xff,
                    (ssleay_value >> 12) & 0xff,
                    sub);
-#endif /* OPENSSL_IS_BORINGSSL */
+#endif
 }
 
 /* can be called with data == NULL */
