@@ -20,5 +20,8 @@ jobs:
           git remote add upstream https://github.com/curl/curl.git
           git fetch upstream
           git checkout ${{ github.ref_name }}
-          git merge upstream/${{ github.ref_name }}
+          git merge --no-ff --no-commit upstream/${{ github.ref_name }}
+          git reset HEAD .github/workflows
+          git checkout -- .github/workflows
+          git commit -m "Sync with upstream (excluding workflows)"
           git push origin ${{ github.ref_name }}
