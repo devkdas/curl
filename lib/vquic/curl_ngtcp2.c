@@ -1248,48 +1248,244 @@
    }
  
    rc = nghttp3_conn_bind_qpack_streams(ctx->h3conn, qpack_enc_stream_id,
-                                        qpack_dec_stream_id);
-   if(rc) {
-     failf(data, "error binding HTTP/3 qpack streams: %s",
-           ngtcp2_strerror(rc));
-     return CURLE_QUIC_CONNECT_ERROR;
-   }
- 
-   return CURLE_OK;
- }
- 
- static ssize_t recv_closed_stream(struct Curl_cfilter *cf,
-                                   struct Curl_easy *data,
-                                   struct h3_stream_ctx *stream,
-                                   CURLcode *err)
- {
-   ssize_t nread = -1;
- 
-   (void)cf;
-   if(stream->reset) {
-     failf(data, "HTTP/3 stream %" FMT_PRId64 " reset by server", stream->id);
-     *err = data->req.bytecount ? CURLE_PARTIAL_FILE : CURLE_HTTP3;
-     goto out;
-   }
-   else if(!stream->resp_hds_complete) {
-     failf(data,
-           "HTTP/3 stream %" FMT_PRId64 " was closed cleanly, but before "
-           "getting all response header fields, treated as error",
-           stream->id);
-     *err = CURLE_HTTP3;
-     goto out;
-   }
-   *err = CURLE_OK;
-   nread = 0;
- 
- out:
-   return nread;
- }
- 
- /* incoming data frames on the h3 stream */
- static CURLcode cf_ngtcp2_recv(struct Curl_cfilter *cf, struct Curl_easy *data,
-                                char *buf, size_t blen, size_t *pnread)
- {
+                                       qpack_dec_stream_id);
+  if(rc) {
+    failf(data, "error binding HTTP/3 qpack streams: %s",
+          ngtcp2_strerror(rc));
+    return CURLE_QUIC_CONNECT_ERROR;
+  }
+
+  return CURLE_OK;
+}
+
+static ssize_t recv_closed_stream(struct Curl_cfilter *cf,
+                                  struct Curl_easy *data,
+                                  struct h3_stream_ctx *stream,
+                                  CURLcode *err)
+{
+  ssize_t nread = -1;
+
+  (void)cf;
+  if(stream->reset) {
+    failf(data, "HTTP/3 stream %" FMT_PRId64 " reset by server", stream->id);
+    *err = data->req.bytecount ? CURLE_PARTIAL_FILE : CURLE_HTTP3;
+    goto out;
+  }
+  else if(!stream->resp_hds_complete) {
+    failf(data,
+          "HTTP/3 stream %" FMT_PRId64 " was closed cleanly, but before "
+          "getting all response header fields, treated as error",
+          stream->id);
+    *err = CURLE_HTTP3;
+    goto out;
+  }
+  *err = CURLE_OK;
+  nread = 0;
+
+out:
+  return nread;
+}
+
+/* incoming data frames on the h3 stream */
+static CURLcode cf_ngtcp2_recv(struct Curl_cfilter *cf, struct Curl_easy *data,
+                               char *buf, size_t blen, size_t *pnread)
+{
+  struct cf_ngtcp2_ctx *ctx = cf->ctx;
+  struct h3_stream_ctx *stream = H3_STREAM_CTX(ctx, data);
+  struct cf_call_data save;
+  struct pkt_io_ctx pktx;
+  CURLcode result = CURLE_OK;
+
+  (void)ctx;
+  (void)buf;
+
+  CF_DATA_SAVE(save, cf, data);
+  DEBUGASSERT(cf->connected);
+  DEBUGASSERT(ctx);
+  DEBUGASSERT(ctx->qconn);
+  DEBUGASSERT(ctx->h3conn);
+  *pnread = 0;
+
+  /* handshake verification failed in callback, do not recv anything */
+  if(ctx->tls_vrfy_result)
+    return ctx->tls_vrfy_result;
+
+  pktx_init(&pktx, cf, data);
+
+  if(!stream || ctx->shutdown_started) {
+    result = CURLE_RECV_ERROR;
+    goto out;
+  }
+
+  if(cf_progress_ingress(cf, data, &pktx)) {
+    result = CURLE_RECV_ERROR;
+    goto out;
+  }
+
+  if(stream->xfer_result) {
+    CURL_TRC_CF(data, cf, "[%" FMT_PRId64 "] xfer write failed", stream->id);
+    cf_ngtcp2_stream_close(cf, data, stream);
+    result = stream->xfer_result;
+    goto out;
+  }
+  else if(stream->closed) {
+    ssize_t nread = recv_closed_stream(cf, data, stream, &result);
+    if(nread > 0)
+      *pnread = (size_t)nread;
+    goto out;
+  }
+  result = CURLE_AGAIN;
+
+out:
+  result = Curl_1st_err(result, cf_progress_egress(cf, data, &pktx));
+  result = Curl_1st_err(result, check_and_set_expiry(cf, data, &pktx));
+
+  CURL_TRC_CF(data, cf, "[%" FMT_PRId64 "] cf_recv(blen=%zu) -> %dm, %zu",
+              stream ? stream->id : -1, blen, result, *pnread);
+  CF_DATA_RESTORE(cf, save);
+  return result;
+}
+
+static int cb_h3_acked_req_body(nghttp3_conn *conn, int64_t stream_id,
+                                uint64_t datalen, void *user_data,
+                                void *stream_user_data)
+{
+  struct Curl_cfilter *cf = user_data;
+  struct cf_ngtcp2_ctx *ctx = cf->ctx;
+  struct Curl_easy *data = stream_user_data;
+  struct h3_stream_ctx *stream = H3_STREAM_CTX(ctx, data);
+  size_t skiplen;
+
+  (void)cf;
+  if(!stream)
+    return 0;
+  /* The server acknowledged `datalen` of bytes from our request body.
+   * This is a delta. We have kept this data in `sendbuf` for
+   * re-transmissions and can free it now. */
+  if(datalen >= (uint64_t)stream->sendbuf_len_in_flight)
+    skiplen = stream->sendbuf_len_in_flight;
+  else
+    skiplen = (size_t)datalen;
+  Curl_bufq_skip(&stream->sendbuf, skiplen);
+  stream->sendbuf_len_in_flight -= skiplen;
+
+  /* Resume upload processing if we have more data to send */
+  if(stream->sendbuf_len_in_flight < Curl_bufq_len(&stream->sendbuf)) {
+    int rv = nghttp3_conn_resume_stream(conn, stream_id);
+    if(rv && rv != NGHTTP3_ERR_STREAM_NOT_FOUND) {
+      return NGHTTP3_ERR_CALLBACK_FAILURE;
+    }
+  }
+  return 0;
+}
+
+static nghttp3_ssize
+cb_h3_read_req_body(nghttp3_conn *conn, int64_t stream_id,
+                    nghttp3_vec *vec, size_t veccnt,
+                    uint32_t *pflags, void *user_data,
+                    void *stream_user_data)
+{
+  struct Curl_cfilter *cf = user_data;
+  struct cf_ngtcp2_ctx *ctx = cf->ctx;
+  struct Curl_easy *data = stream_user_data;
+  struct h3_stream_ctx *stream = H3_STREAM_CTX(ctx, data);
+  ssize_t nwritten = 0;
+  size_t nvecs = 0;
+  (void)cf;
+  (void)conn;
+  (void)stream_id;
+  (void)user_data;
+  (void)veccnt;
+
+  if(!stream)
+    return NGHTTP3_ERR_CALLBACK_FAILURE;
+  /* nghttp3 keeps references to the sendbuf data until it is ACKed
+   * by the server (see `cb_h3_acked_req_body()` for updates).
+   * `sendbuf_len_in_flight` is the amount of bytes in `sendbuf`
+   * that we have already passed to nghttp3, but which have not been
+   * ACKed yet.
+   * Any amount beyond `sendbuf_len_in_flight` we need still to pass
+   * to nghttp3. Do that now, if we can. */
+  if(stream->sendbuf_len_in_flight < Curl_bufq_len(&stream->sendbuf)) {
+    nvecs = 0;
+    while(nvecs < veccnt &&
+          Curl_bufq_peek_at(&stream->sendbuf,
+                            stream->sendbuf_len_in_flight,
+                            CURL_UNCONST(&vec[nvecs].base),
+                            &vec[nvecs].len)) {
+      stream->sendbuf_len_in_flight += vec[nvecs].len;
+      nwritten += vec[nvecs].len;
+      ++nvecs;
+    }
+    DEBUGASSERT(nvecs > 0); /* we SHOULD have been be able to peek */
+  }
+
+  if(nwritten > 0 && stream->upload_left != -1)
+    stream->upload_left -= nwritten;
+
+  /* When we stopped sending and everything in `sendbuf` is "in flight",
+   * we are at the end of the request body. */
+  if(stream->upload_left == 0) {
+    *pflags = NGHTTP3_DATA_FLAG_EOF;
+    stream->send_closed = TRUE;
+  }
+  else if(!nwritten) {
+    /* Not EOF, and nothing to give, we signal WOULDBLOCK. */
+    CURL_TRC_CF(data, cf, "[%" FMT_PRId64 "] read req body -> AGAIN",
+                stream->id);
+    return NGHTTP3_ERR_WOULDBLOCK;
+  }
+
+  CURL_TRC_CF(data, cf, "[%" FMT_PRId64 "] read req body -> "
+              "%d vecs%s with %zu (buffered=%zu, left=%" FMT_OFF_T ")",
+              stream->id, (int)nvecs,
+              *pflags == NGHTTP3_DATA_FLAG_EOF ? " EOF" : "",
+              nwritten, Curl_bufq_len(&stream->sendbuf),
+              stream->upload_left);
+  return (nghttp3_ssize)nvecs;
+}
+
+/* Index where :authority header field will appear in request header
+   field list. */
+#define AUTHORITY_DST_IDX 3
+
+static CURLcode h3_stream_open(struct Curl_cfilter *cf,
+                               struct Curl_easy *data,
+                               const void *buf, size_t len,
+                               size_t *pnwritten)
+{
+  struct cf_ngtcp2_ctx *ctx = cf->ctx;
+  struct h3_stream_ctx *stream = NULL;
+  int64_t sid;
+  struct dynhds h2_headers;
+  size_t nheader;
+  nghttp3_nv *nva = NULL;
+  int rc = 0;
+  unsigned int i;
+  ssize_t nwritten = -1;
+  nghttp3_data_reader reader;
+  nghttp3_data_reader *preader = NULL;
+  CURLcode result;
+
+  *pnwritten = 0;
+  Curl_dynhds_init(&h2_headers, 0, DYN_HTTP_REQUEST);
+
+  result = h3_data_setup(cf, data);
+  if(result)
+    goto out;
+  stream = H3_STREAM_CTX(ctx, data);
+  DEBUGASSERT(stream);
+  if(!stream) {
+    result = CURLE_FAILED_INIT;
+    goto out;
+  }
+
+  nwritten = Curl_h1_req_parse_read(&stream->h1, buf, len, NULL, 0, &result);
+  if(nwritten < 0)
+    goto out;
+  *pnwritten = (size_t)nwritten;
+
+  /* ... */
    struct cf_ngtcp2_ctx *ctx = cf->ctx;
    struct h3_stream_ctx *stream = H3_STREAM_CTX(ctx, data);
    struct cf_call_data save;
