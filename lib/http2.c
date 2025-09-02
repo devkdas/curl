@@ -799,7 +799,7 @@ static ssize_t send_callback(nghttp2_session *h2,
     ctx->nw_out_blocked = 1;
     return NGHTTP2_ERR_WOULDBLOCK;
   }
-  return (nwritten  > SSIZE_T_MAX) ?
+  return (nwritten  > SSIZE_MAX) ?
     NGHTTP2_ERR_CALLBACK_FAILURE : (ssize_t)nwritten;
 }
 
@@ -1820,8 +1820,9 @@ CURLcode Curl_http2_request_upgrade(struct dynbuf *req,
     return result;
   }
 
+  data->state.http_hd_upgrade = TRUE;
+  data->state.http_hd_h2_settings = TRUE;
   result = curlx_dyn_addf(req,
-                          "Connection: Upgrade, HTTP2-Settings\r\n"
                           "Upgrade: %s\r\n"
                           "HTTP2-Settings: %s\r\n",
                           NGHTTP2_CLEARTEXT_PROTO_VERSION_ID, base64);
