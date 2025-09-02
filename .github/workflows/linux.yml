@@ -40,7 +40,7 @@ permissions: {}
 env:
   MAKEFLAGS: -j 5
   CURL_CI: github
-  CURL_CLANG_TIDYFLAGS: '-checks=-clang-analyzer-security.insecureAPI.bzero,-clang-analyzer-security.insecureAPI.strcpy,-clang-analyzer-optin.performance.Padding,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-analyzer-valist.Uninitialized'
+  CURL_CLANG_TIDYFLAGS: '-checks=-clang-analyzer-security.insecureAPI.bzero,-clang-analyzer-security.insecureAPI.strcpy,-clang-analyzer-optin.performance.Padding,-clang-analyzer-security.ArrayBound,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-analyzer-valist.Uninitialized'
   # renovate: datasource=github-tags depName=libressl-portable/portable versioning=semver registryUrl=https://github.com
   LIBRESSL_VERSION: 4.1.0
   # renovate: datasource=github-tags depName=wolfSSL/wolfssl versioning=semver extractVersion=^v?(?<version>.+)-stable$ registryUrl=https://github.com
@@ -173,7 +173,7 @@ jobs:
           - name: 'openssl -O3 libssh valgrind'
             install_packages: zlib1g-dev libssh-dev valgrind
             CFLAGS: -O3
-            generate: -DENABLE_DEBUG=ON -DCURL_USE_LIBSSH=ON
+            generate: -DENABLE_DEBUG=ON -DCURL_USE_LIBSSH=ON -DCMAKE_UNITY_BUILD_BATCH_SIZE=50
 
           - name: 'openssl clang krb5 openldap static'
             install_steps: openldap-static

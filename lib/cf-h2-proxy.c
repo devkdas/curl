@@ -474,7 +474,7 @@ static CURLcode proxy_h2_progress_ingress(struct Curl_cfilter *cf,
                 Curl_bufq_len(&ctx->inbufq), result, nread);
     if(result) {
       if(result != CURLE_AGAIN) {
-        failf(data, "Failed receiving HTTP2 data");
+        failf(data, "Failed receiving HTTP2 proxy data");
         return result;
       }
       break;
@@ -541,7 +541,7 @@ static ssize_t on_session_send(nghttp2_session *h2,
   if(!nwritten)
     return NGHTTP2_ERR_WOULDBLOCK;
 
-  return (nwritten  > SSIZE_T_MAX) ?
+  return (nwritten  > SSIZE_MAX) ?
     NGHTTP2_ERR_CALLBACK_FAILURE : (ssize_t)nwritten;
 }
 
@@ -817,7 +817,7 @@ static ssize_t tunnel_send_callback(nghttp2_session *session,
 
   CURL_TRC_CF(data, cf, "[%d] tunnel_send_callback -> %zd",
               ts->stream_id, nread);
-  return (nread  > SSIZE_T_MAX) ?
+  return (nread  > SSIZE_MAX) ?
     NGHTTP2_ERR_CALLBACK_FAILURE : (ssize_t)nread;
 }
 

@@ -130,7 +130,7 @@ static CURLcode glob_set(struct URLGlob *glob, const char **patternp,
       if(pat->c.set.elem) {
         char **arr;
 
-        if(pat->c.set.size >= (curl_off_t)(SIZE_T_MAX/(sizeof(char *))))
+        if(pat->c.set.size >= (curl_off_t)(SIZE_MAX/(sizeof(char *))))
           return globerror(glob, "range overflow", 0, CURLE_URL_MALFORMAT);
 
         arr = realloc(pat->c.set.elem, (size_t)(pat->c.set.size + 1) *
@@ -423,10 +423,13 @@ static CURLcode glob_parse(struct URLGlob *glob, const char *pattern,
     if(++glob->size >= glob->palloc) {
       struct URLPattern *np = NULL;
       glob->palloc *= 2;
-      if(glob->size < 10000) /* avoid ridiculous amounts */
+      if(glob->size < 255) { /* avoid ridiculous amounts */
         np = realloc(glob->pattern, glob->palloc * sizeof(struct URLPattern));
-      if(!np)
-        return globerror(glob, NULL, pos, CURLE_OUT_OF_MEMORY);
+        if(!np)
+          return globerror(glob, NULL, pos, CURLE_OUT_OF_MEMORY);
+      }
+      else
+        return globerror(glob, "too many {} sets", pos, CURLE_URL_MALFORMAT);
       glob->pattern = np;
     }
   }
