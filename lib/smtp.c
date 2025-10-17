@@ -81,8 +81,7 @@
 #include "idn.h"
 #include "curlx/strparse.h"
 
-/* The last 3 #include files should be in this order */
-#include "curl_printf.h"
+/* The last 2 #include files should be in this order */
 #include "curl_memory.h"
 #include "memdebug.h"
 
@@ -206,7 +205,7 @@ const struct Curl_handler Curl_handler_smtp = {
   CURLPROTO_SMTP,                   /* protocol */
   CURLPROTO_SMTP,                   /* family */
   PROTOPT_CLOSEACTION | PROTOPT_NOURLQUERY | /* flags */
-  PROTOPT_URLOPTIONS
+  PROTOPT_URLOPTIONS | PROTOPT_SSL_REUSE
 };
 
 #ifdef USE_SSL
@@ -712,14 +711,14 @@ static CURLcode smtp_perform_mail(struct Curl_easy *data,
             (!Curl_is_ASCII_name(host.name)));
 
     if(host.name) {
-      from = aprintf("<%s@%s>%s", address, host.name, suffix);
+      from = curl_maprintf("<%s@%s>%s", address, host.name, suffix);
 
       Curl_free_idnconverted_hostname(&host);
     }
     else
       /* An invalid mailbox was provided but we will simply let the server
          worry about that and reply with a 501 error */
-      from = aprintf("<%s>%s", address, suffix);
+      from = curl_maprintf("<%s>%s", address, suffix);
 
     free(address);
   }
@@ -754,14 +753,14 @@ static CURLcode smtp_perform_mail(struct Curl_easy *data,
         utf8 = TRUE;
 
       if(host.name) {
-        auth = aprintf("<%s@%s>%s", address, host.name, suffix);
+        auth = curl_maprintf("<%s@%s>%s", address, host.name, suffix);
 
         Curl_free_idnconverted_hostname(&host);
       }
       else
         /* An invalid mailbox was provided but we will simply let the server
            worry about it */
-        auth = aprintf("<%s>%s", address, suffix);
+        auth = curl_maprintf("<%s>%s", address, suffix);
       free(address);
     }
     else
@@ -806,7 +805,7 @@ static CURLcode smtp_perform_mail(struct Curl_easy *data,
 
   /* Calculate the optional SIZE parameter */
   if(smtpc->size_supported && data->state.infilesize > 0) {
-    size = aprintf("%" FMT_OFF_T, data->state.infilesize);
+    size = curl_maprintf("%" FMT_OFF_T, data->state.infilesize);
 
     if(!size) {
       result = CURLE_OUT_OF_MEMORY;
@@ -989,19 +988,19 @@ static CURLcode smtp_state_ehlo_resp(struct Curl_easy *data,
     len -= 4;
 
     /* Does the server support the STARTTLS capability? */
-    if(len >= 8 && !memcmp(line, "STARTTLS", 8))
+    if(len >= 8 && curl_strnequal(line, "STARTTLS", 8))
       smtpc->tls_supported = TRUE;
 
     /* Does the server support the SIZE capability? */
-    else if(len >= 4 && !memcmp(line, "SIZE", 4))
+    else if(len >= 4 && curl_strnequal(line, "SIZE", 4))
       smtpc->size_supported = TRUE;
 
     /* Does the server support the UTF-8 capability? */
-    else if(len >= 8 && !memcmp(line, "SMTPUTF8", 8))
+    else if(len >= 8 && curl_strnequal(line, "SMTPUTF8", 8))
       smtpc->utf8_supported = TRUE;
 
     /* Does the server support authentication? */
-    else if(len >= 5 && !memcmp(line, "AUTH ", 5)) {
+    else if(len >= 5 && curl_strnequal(line, "AUTH ", 5)) {
       smtpc->auth_supported = TRUE;
 
       /* Advance past the AUTH keyword */

@@ -39,17 +39,18 @@ static CURLcode test_lib591(const char *URL)
 
   start_test_timing();
 
-  upload = fopen(libtest_arg3, "rb");
+  upload = curlx_fopen(libtest_arg3, "rb");
   if(!upload) {
+    char errbuf[STRERROR_LEN];
     curl_mfprintf(stderr, "fopen() failed with error (%d) %s\n",
-                  errno, strerror(errno));
+                  errno, curlx_strerror(errno, errbuf, sizeof(errbuf)));
     curl_mfprintf(stderr, "Error opening file '%s'\n", libtest_arg3);
     return TEST_ERR_FOPEN;
   }
 
   res_global_init(CURL_GLOBAL_ALL);
   if(res) {
-    fclose(upload);
+    curlx_fclose(upload);
     return res;
   }
 
@@ -71,8 +72,7 @@ static CURLcode test_lib591(const char *URL)
   easy_setopt(easy, CURLOPT_FTPPORT, "-");
 
   /* server connection timeout */
-  easy_setopt(easy, CURLOPT_ACCEPTTIMEOUT_MS,
-              strtol(libtest_arg2, NULL, 10)*1000);
+  easy_setopt(easy, CURLOPT_ACCEPTTIMEOUT_MS, atol(libtest_arg2)*1000);
 
   multi_init(multi);
 
@@ -138,7 +138,7 @@ test_cleanup:
   curl_global_cleanup();
 
   /* close the local file */
-  fclose(upload);
+  curlx_fclose(upload);
 
   return res;
 }

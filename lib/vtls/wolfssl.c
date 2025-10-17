@@ -69,7 +69,6 @@
 #include "../select.h"
 #include "../strdup.h"
 #include "x509asn1.h"
-#include "../curl_printf.h"
 #include "../multiif.h"
 
 #include <wolfssl/ssl.h>
@@ -362,8 +361,11 @@ static int wssl_bio_cf_in_read(WOLFSSL_BIO *bio, char *buf, int blen)
   CURLcode result = CURLE_OK;
 
   DEBUGASSERT(data);
-  /* OpenSSL catches this case, so should we. */
-  if(!buf)
+  if(!data || (blen < 0)) {
+    wssl->io_result = CURLE_FAILED_INIT;
+    return -1;
+  }
+  if(!buf || !blen)
     return 0;
 
   if((connssl->connecting_state == ssl_connect_2) &&
@@ -1095,9 +1097,6 @@ static CURLcode ssl_version(struct Curl_easy *data,
 }
 
 
-#define QUIC_CIPHERS                                                          \
-  "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_"               \
-  "POLY1305_SHA256:TLS_AES_128_CCM_SHA256"
 #define QUIC_GROUPS "P-256:P-384:P-521"
 
 CURLcode Curl_wssl_ctx_init(struct wssl_ctx *wctx,
@@ -1633,11 +1632,10 @@ static CURLcode wssl_send_earlydata(struct Curl_cfilter *cf,
         break;
       default: {
         char error_buffer[256];
-        int detail = wolfSSL_get_error(wssl->ssl, err);
         CURL_TRC_CF(data, cf, "SSL send early data, error: '%s'(%d)",
                     wssl_strerror((unsigned long)err, error_buffer,
                                   sizeof(error_buffer)),
-                    detail);
+                    err);
         result = CURLE_SEND_ERROR;
         break;
       }
@@ -1879,7 +1877,6 @@ static CURLcode wssl_shutdown(struct Curl_cfilter *cf,
   char error_buffer[256];
   int nread = -1, err;
   size_t i;
-  int detail;
 
   DEBUGASSERT(wctx);
   if(!wctx->ssl || cf->shutdown) {
@@ -1921,7 +1918,8 @@ static CURLcode wssl_shutdown(struct Curl_cfilter *cf,
    * was not complete, we are lacking the close notify from the server. */
   if(send_shutdown) {
     wolfSSL_ERR_clear_error();
-    if(wolfSSL_shutdown(wctx->ssl) == 1) {
+    nread = wolfSSL_shutdown(wctx->ssl);
+    if(nread == 1) {
       CURL_TRC_CF(data, cf, "SSL shutdown finished");
       *done = TRUE;
       goto out;
@@ -1959,11 +1957,10 @@ static CURLcode wssl_shutdown(struct Curl_cfilter *cf,
     connssl->io_need = CURL_SSL_IO_NEED_SEND;
     break;
   default:
-    detail = wolfSSL_get_error(wctx->ssl, err);
     CURL_TRC_CF(data, cf, "SSL shutdown, error: '%s'(%d)",
                 wssl_strerror((unsigned long)err, error_buffer,
                               sizeof(error_buffer)),
-                detail);
+                err);
     result = CURLE_RECV_ERROR;
     break;
   }
@@ -2055,9 +2052,9 @@ static CURLcode wssl_recv(struct Curl_cfilter *cf,
 size_t Curl_wssl_version(char *buffer, size_t size)
 {
 #if LIBWOLFSSL_VERSION_HEX >= 0x03006000
-  return msnprintf(buffer, size, "wolfSSL/%s", wolfSSL_lib_version());
+  return curl_msnprintf(buffer, size, "wolfSSL/%s", wolfSSL_lib_version());
 #elif defined(WOLFSSL_VERSION)
-  return msnprintf(buffer, size, "wolfSSL/%s", WOLFSSL_VERSION);
+  return curl_msnprintf(buffer, size, "wolfSSL/%s", WOLFSSL_VERSION);
 #endif
 }
 

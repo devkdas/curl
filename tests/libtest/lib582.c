@@ -225,6 +225,7 @@ static CURLcode test_lib582(const char *URL)
 {
   CURLcode res = CURLE_OK;
   CURL *curl = NULL;
+  char errbuf[STRERROR_LEN];
   FILE *hd_src = NULL;
   int hd;
   struct_stat file_info;
@@ -243,16 +244,17 @@ static CURLcode test_lib582(const char *URL)
     return TEST_ERR_USAGE;
   }
 
-  hd_src = fopen(libtest_arg2, "rb");
+  hd_src = curlx_fopen(libtest_arg2, "rb");
   if(!hd_src) {
     curl_mfprintf(stderr, "fopen() failed with error (%d) %s\n",
-                  errno, strerror(errno));
+                  errno, curlx_strerror(errno, errbuf, sizeof(errbuf)));
     curl_mfprintf(stderr, "Error opening file '%s'\n", libtest_arg2);
     return TEST_ERR_FOPEN;
   }
 
   /* get the file size of the local file */
 #ifdef UNDER_CE
+  /* !checksrc! disable BANNEDFUNC 1 */
   hd = stat(libtest_arg2, &file_info);
 #else
   hd = fstat(fileno(hd_src), &file_info);
@@ -260,9 +262,9 @@ static CURLcode test_lib582(const char *URL)
   if(hd == -1) {
     /* can't open file, bail out */
     curl_mfprintf(stderr, "fstat() failed with error (%d) %s\n",
-                  errno, strerror(errno));
+                  errno, curlx_strerror(errno, errbuf, sizeof(errbuf)));
     curl_mfprintf(stderr, "Error opening file '%s'\n", libtest_arg2);
-    fclose(hd_src);
+    curlx_fclose(hd_src);
     return TEST_ERR_FSTAT;
   }
   curl_mfprintf(stderr, "Set to upload %" CURL_FORMAT_CURL_OFF_T " bytes\n",
@@ -270,7 +272,7 @@ static CURLcode test_lib582(const char *URL)
 
   res_global_init(CURL_GLOBAL_ALL);
   if(res != CURLE_OK) {
-    fclose(hd_src);
+    curlx_fclose(hd_src);
     return res;
   }
 
@@ -356,7 +358,7 @@ test_cleanup:
   curl_global_cleanup();
 
   /* close the local file */
-  fclose(hd_src);
+  curlx_fclose(hd_src);
 
   /* free local memory */
   free(sockets.read.sockets);

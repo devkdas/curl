@@ -30,7 +30,7 @@ my @tabs = (
     "^m4/zz40-xc-ovr.m4",
     "Makefile\\.(am|example)\$",
     "/mkfile",
-    "\\.(sln|vc)\$",
+    "\\.sln\$",
     "^tests/data/test",
 );
 
@@ -40,7 +40,6 @@ my @mixed_eol = (
 
 my @need_crlf = (
     "\\.(bat|sln)\$",
-    "^winbuild/.+\\.md\$",
 );
 
 my @space_at_eol = (
@@ -54,7 +53,7 @@ my @non_ascii_allowed = (
 my $non_ascii_allowed = join(', ', @non_ascii_allowed);
 
 my @non_ascii = (
-    ".github/scripts/spellcheck.words",
+    ".github/scripts/pyspelling.words",
     ".mailmap",
     "RELEASE-NOTES",
     "docs/BINDINGS.md",

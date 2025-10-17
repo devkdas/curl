@@ -106,7 +106,7 @@ static CURLcode test_ws_data_m2_echo(const char *url,
   curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
   curl_easy_setopt(curl, CURLOPT_CONNECT_ONLY, 2L); /* websocket style */
   r = curl_easy_perform(curl);
-  curl_mfprintf(stderr, "curl_easy_perform() returned %u\n", (int)r);
+  curl_mfprintf(stderr, "curl_easy_perform() returned %u\n", r);
   if(r != CURLE_OK)
     goto out;
 
@@ -431,13 +431,13 @@ static CURLcode test_cli_ws_data(const char *URL)
       res = CURLE_BAD_FUNCTION_ARGUMENT;
       goto cleanup;
     case 'c':
-      count = (size_t)strtol(coptarg, NULL, 10);
+      count = (size_t)atol(coptarg);
       break;
     case 'm':
-      plen_min = (size_t)strtol(coptarg, NULL, 10);
+      plen_min = (size_t)atol(coptarg);
       break;
     case 'M':
-      plen_max = (size_t)strtol(coptarg, NULL, 10);
+      plen_max = (size_t)atol(coptarg);
       break;
     default:
       test_ws_data_usage("invalid option");
