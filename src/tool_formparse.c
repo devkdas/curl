@@ -222,8 +222,9 @@ size_t tool_mime_stdin_read(char *buffer,
       /* Read from stdin. */
       nitems = fread(buffer, 1, nitems, stdin);
       if(ferror(stdin)) {
+        char errbuf[STRERROR_LEN];
         /* Show error only once. */
-        warnf("stdin: %s", strerror(errno));
+        warnf("stdin: %s", curlx_strerror(errno, errbuf, sizeof(errbuf)));
         return CURL_READFUNC_ABORT;
       }
     }
@@ -444,8 +445,9 @@ static int read_field_headers(const char *filename, FILE *fp,
     switch(c) {
     case EOF:
       if(ferror(fp)) {
+        char errbuf[STRERROR_LEN];
         errorf("Header file %s read error: %s", filename,
-               strerror(errno));
+               curlx_strerror(errno, errbuf, sizeof(errbuf)));
         return -1;
       }
       return 0;    /* Done. */
@@ -563,14 +565,16 @@ static int get_param_part(char endchar,
             endpos--;
         sep = *p;
         *endpos = '\0';
-        fp = fopen(hdrfile, FOPEN_READTEXT);
-        if(!fp)
+        fp = curlx_fopen(hdrfile, FOPEN_READTEXT);
+        if(!fp) {
+          char errbuf[STRERROR_LEN];
           warnf("Cannot read from %s: %s", hdrfile,
-                strerror(errno));
+                curlx_strerror(errno, errbuf, sizeof(errbuf)));
+        }
         else {
           int i = read_field_headers(hdrfile, fp, &headers);
 
-          fclose(fp);
+          curlx_fclose(fp);
           if(i) {
             curl_slist_free_all(headers);
             return -1;

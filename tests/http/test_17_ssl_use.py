@@ -367,6 +367,7 @@ class TestSSLUse:
             assert r.exit_code != 0, f'should fail, server={server_ver:04x}, curl=[{curl_min_ver:04x}, {curl_max_ver:04x}]\n{r.dump_logs()}'
 
     @pytest.mark.skipif(condition=not Env.curl_is_debug(), reason="needs curl debug")
+    @pytest.mark.skipif(condition=not Env.curl_is_verbose(), reason="needs curl verbose strings")
     def test_17_10_h3_session_reuse(self, env: Env, httpd, nghttpx):
         if not env.have_h3():
             pytest.skip("h3 not supported")
@@ -432,9 +433,9 @@ class TestSSLUse:
         exp_trace = None
         match_trace = None
         if env.curl_uses_lib('openssl') or env.curl_uses_lib('quictls'):
-            exp_trace = r'.*SSL certificate problem: certificate has expired$'
+            exp_trace = r'.*SSL certificate OpenSSL verify result: certificate has expired.*$'
         elif env.curl_uses_lib('gnutls'):
-            exp_trace = r'.*server verification failed: certificate has expired\..*'
+            exp_trace = r'.*SSL certificate verification failed: certificate has expired\..*'
         elif env.curl_uses_lib('wolfssl'):
             exp_trace = r'.*server verification failed: certificate has expired\.$'
         if exp_trace is not None:

@@ -195,8 +195,9 @@
   {"keepalive-time",             ARG_STRG, ' ', C_KEEPALIVE_TIME},
   {"key",                        ARG_FILE, ' ', C_KEY},
   {"key-type",                   ARG_STRG|ARG_TLS, ' ', C_KEY_TYPE},
-  {"krb",                        ARG_STRG, ' ', C_KRB},
-  {"krb4",                       ARG_STRG, ' ', C_KRB4},
+  {"knownhosts",                 ARG_FILE, ' ', C_KNOWNHOSTS},
+  {"krb",                        ARG_STRG|ARG_DEPR, ' ', C_KRB},
+  {"krb4",                       ARG_STRG|ARG_DEPR, ' ', C_KRB4},
   {"libcurl",                    ARG_STRG, ' ', C_LIBCURL},
   {"limit-rate",                 ARG_STRG, ' ', C_LIMIT_RATE},
   {"list-only",                  ARG_BOOL, 'l', C_LIST_ONLY},
@@ -626,7 +627,7 @@ static ParameterError data_urlencode(const char *nextarg,
       CURLX_SET_BINMODE(stdin);
     }
     else {
-      file = fopen(p, "rb");
+      file = curlx_fopen(p, "rb");
       if(!file) {
         errorf("Failed to open %s", p);
         return PARAM_READ_ERROR;
@@ -636,7 +637,7 @@ static ParameterError data_urlencode(const char *nextarg,
     err = file2memory(&postdata, &size, file);
 
     if(file && (file != stdin))
-      fclose(file);
+      curlx_fclose(file);
     if(err)
       return err;
   }
@@ -735,7 +736,10 @@ static CURLcode set_trace_config(const char *token)
     if((len == 3) && curl_strnequal(name, "all", 3)) {
       global->traceids = toggle;
       global->tracetime = toggle;
-      result = curl_global_trace(token);
+      if(toggle)
+        result = curl_global_trace("all,-lib-ids");
+      else
+        result = curl_global_trace(token);
       if(result)
         goto out;
     }
@@ -746,9 +750,9 @@ static CURLcode set_trace_config(const char *token)
       global->tracetime = toggle;
     }
     else {
-      char buffer[32];
-      msnprintf(buffer, sizeof(buffer), "%c%.*s", toggle ? '+' : '-',
-                (int)len, name);
+      char buffer[64];
+      curl_msnprintf(buffer, sizeof(buffer), "%c%.*s,-lib-ids",
+                     toggle ? '+' : '-', (int)len, name);
       result = curl_global_trace(buffer);
       if(result)
         goto out;
@@ -898,7 +902,7 @@ static ParameterError set_data(cmdline_t cmd,
         CURLX_SET_BINMODE(stdin);
     }
     else {
-      file = fopen(nextarg, "rb");
+      file = curlx_fopen(nextarg, "rb");
       if(!file) {
         errorf("Failed to open %s", nextarg);
         return PARAM_READ_ERROR;
@@ -916,7 +920,7 @@ static ParameterError set_data(cmdline_t cmd,
     }
 
     if(file && (file != stdin))
-      fclose(file);
+      curlx_fclose(file);
     if(err)
       return err;
 
@@ -1011,8 +1015,9 @@ static ParameterError set_rate(const char *nextarg)
       errorf("too large --rate unit");
       err = PARAM_NUMBER_TOO_LARGE;
     }
-    /* this typecast is okay based on the check above */
-    numerator *= (long)numunits;
+    else
+      /* this typecast is okay based on the check above */
+      numerator *= (long)numunits;
   }
 
   if(err)
@@ -1092,7 +1097,7 @@ static ParameterError parse_url(struct OperationConfig *config,
     if(fromstdin)
       f = stdin;
     else
-      f = fopen(&nextarg[1], FOPEN_READTEXT);
+      f = curlx_fopen(&nextarg[1], FOPEN_READTEXT);
     if(f) {
       curlx_dyn_init(&line, 8092);
       while(my_get_line(f, &line, &error)) {
@@ -1102,7 +1107,7 @@ static ParameterError parse_url(struct OperationConfig *config,
           break;
       }
       if(!fromstdin)
-        fclose(f);
+        curlx_fclose(f);
       curlx_dyn_free(&line);
       if(error || err)
         return PARAM_READ_ERROR;
@@ -1135,7 +1140,7 @@ static ParameterError parse_localport(struct OperationConfig *config,
     if(ISBLANK(*pp))
       pp++;
   }
-  msnprintf(buffer, sizeof(buffer), "%.*s", (int)plen, nextarg);
+  curl_msnprintf(buffer, sizeof(buffer), "%.*s", (int)plen, nextarg);
   if(str2unummax(&config->localport, buffer, 65535))
     return PARAM_BAD_USE;
   if(!pp)
@@ -1204,7 +1209,7 @@ static ParameterError parse_ech(struct OperationConfig *config,
         file = stdin;
       }
       else {
-        file = fopen(nextarg, FOPEN_READTEXT);
+        file = curlx_fopen(nextarg, FOPEN_READTEXT);
       }
       if(!file) {
         warnf("Couldn't read file \"%s\" "
@@ -1214,10 +1219,10 @@ static ParameterError parse_ech(struct OperationConfig *config,
       }
       err = file2string(&tmpcfg, file);
       if(file != stdin)
-        fclose(file);
+        curlx_fclose(file);
       if(err)
         return err;
-      config->ech_config = aprintf("ecl:%s",tmpcfg);
+      config->ech_config = curl_maprintf("ecl:%s",tmpcfg);
       free(tmpcfg);
       if(!config->ech_config)
         return PARAM_NO_MEM;
@@ -1240,7 +1245,7 @@ static ParameterError parse_header(struct OperationConfig *config,
   if(nextarg[0] == '@') {
     /* read many headers from a file or stdin */
     bool use_stdin = !strcmp(&nextarg[1], "-");
-    FILE *file = use_stdin ? stdin : fopen(&nextarg[1], FOPEN_READTEXT);
+    FILE *file = use_stdin ? stdin : curlx_fopen(&nextarg[1], FOPEN_READTEXT);
     if(!file) {
       errorf("Failed to open %s", &nextarg[1]);
       err = PARAM_READ_ERROR;
@@ -1261,10 +1266,14 @@ static ParameterError parse_header(struct OperationConfig *config,
         err = PARAM_READ_ERROR;
       curlx_dyn_free(&line);
       if(!use_stdin)
-        fclose(file);
+        curlx_fclose(file);
     }
   }
   else {
+    if(!strchr(nextarg, ':') && !strchr(nextarg, ';')) {
+      warnf("The provided %s header '%s' does not look like a header?",
+            (cmd == C_PROXY_HEADER) ? "proxy": "HTTP", nextarg);
+    }
     if(cmd == C_PROXY_HEADER) /* --proxy-header */
       err = add2list(&config->proxyheaders, nextarg);
     else
@@ -1396,8 +1405,8 @@ static ParameterError parse_range(struct OperationConfig *config,
     char buffer[32];
     warnf("A specified range MUST include at least one dash (-). "
           "Appending one for you");
-    msnprintf(buffer, sizeof(buffer), "%" CURL_FORMAT_CURL_OFF_T "-",
-              value);
+    curl_msnprintf(buffer, sizeof(buffer), "%" CURL_FORMAT_CURL_OFF_T "-",
+                   value);
     free(config->range);
     config->range = strdup(buffer);
     if(!config->range)
@@ -1534,7 +1543,7 @@ static ParameterError parse_writeout(struct OperationConfig *config,
     }
     else {
       fname = nextarg;
-      file = fopen(fname, FOPEN_READTEXT);
+      file = curlx_fopen(fname, FOPEN_READTEXT);
       if(!file) {
         errorf("Failed to open %s", fname);
         return PARAM_READ_ERROR;
@@ -1543,7 +1552,7 @@ static ParameterError parse_writeout(struct OperationConfig *config,
     tool_safefree(config->writeout);
     err = file2string(&config->writeout, file);
     if(file && (file != stdin))
-      fclose(file);
+      curlx_fclose(file);
     if(err)
       return err;
     if(!config->writeout)
@@ -1971,14 +1980,6 @@ static ParameterError opt_bool(struct OperationConfig *config,
   case C_MAIL_RCPT_ALLOWFAILS: /* --mail-rcpt-allowfails */
     config->mail_rcpt_allowfails = toggle;
     break;
-  case C_FAIL_WITH_BODY: /* --fail-with-body */
-    config->failwithbody = toggle;
-    if(config->failonerror && config->failwithbody) {
-      errorf("You must select either --fail or "
-             "--fail-with-body, not both.");
-      return PARAM_BAD_USE;
-    }
-    break;
   case C_REMOVE_ON_ERROR: /* --remove-on-error */
     if(config->use_resume && toggle) {
       errorf("--continue-at is mutually exclusive with --remove-on-error");
@@ -1986,13 +1987,15 @@ static ParameterError opt_bool(struct OperationConfig *config,
     }
     config->rm_partial = toggle;
     break;
-  case C_FAIL: /* --fail */
-    config->failonerror = toggle;
-    if(config->failonerror && config->failwithbody) {
-      errorf("You must select either --fail or "
-             "--fail-with-body, not both.");
-      return PARAM_BAD_USE;
-    }
+  case C_FAIL: /* --fail without body */
+    if(toggle && (config->fail == FAIL_WITH_BODY))
+      warnf("--fail deselects --fail-with-body here");
+    config->fail = toggle ? FAIL_WO_BODY : FAIL_NONE;
+    break;
+  case C_FAIL_WITH_BODY: /* --fail-with-body */
+    if(toggle && (config->fail == FAIL_WO_BODY))
+      warnf("--fail-with-body deselects --fail here");
+    config->fail = toggle ? FAIL_WITH_BODY : FAIL_NONE;
     break;
   case C_GLOBOFF: /* --globoff */
     config->globoff = toggle;
@@ -2051,7 +2054,6 @@ static ParameterError opt_bool(struct OperationConfig *config,
     break;
   case C_REMOTE_NAME: /* --remote-name */
     return parse_remote_name(config, toggle);
-    break;
   case C_PROXYTUNNEL: /* --proxytunnel */
     config->proxytunnel = toggle;
     break;
@@ -2073,7 +2075,6 @@ static ParameterError opt_bool(struct OperationConfig *config,
     break;
   case C_VERBOSE: /* --verbose */
     return parse_verbose(toggle);
-    break;
   case C_VERSION: /* --version */
     if(toggle)    /* --no-version yields no output! */
       return PARAM_VERSION_INFO_REQUESTED;
@@ -2106,11 +2107,126 @@ static ParameterError opt_bool(struct OperationConfig *config,
   return PARAM_OK;
 }
 
+/* opt_file handles file options */
+static ParameterError opt_file(struct OperationConfig *config,
+                               const struct LongShort *a,
+                               const char *nextarg)
+{
+  ParameterError err = PARAM_OK;
+  if((nextarg[0] == '-') && nextarg[1]) {
+    /* if the filename looks like a command line option */
+    warnf("The filename argument '%s' looks like a flag.", nextarg);
+  }
+  switch(a->cmd) {
+  case C_ABSTRACT_UNIX_SOCKET: /* --abstract-unix-socket */
+    config->abstract_unix_socket = TRUE;
+    err = getstr(&config->unix_socket_path, nextarg, DENY_BLANK);
+    break;
+  case C_CACERT: /* --cacert */
+    err = getstr(&config->cacert, nextarg, DENY_BLANK);
+    break;
+  case C_CAPATH: /* --capath */
+    err = getstr(&config->capath, nextarg, DENY_BLANK);
+    break;
+  case C_CERT: /* --cert */
+    GetFileAndPassword(nextarg, &config->cert, &config->key_passwd);
+    break;
+  case C_CONFIG: /* --config */
+    if(parseconfig(nextarg)) {
+      errorf("cannot read config from '%s'", nextarg);
+      err = PARAM_READ_ERROR;
+    }
+    break;
+  case C_CRLFILE: /* --crlfile */
+    err = getstr(&config->crlfile, nextarg, DENY_BLANK);
+    break;
+  case C_DUMP_HEADER: /* --dump-header */
+    err = getstr(&config->headerfile, nextarg, DENY_BLANK);
+    break;
+  case C_ETAG_SAVE: /* --etag-save */
+    if(config->num_urls > 1) {
+      errorf("The etag options only work on a single URL");
+      err = PARAM_BAD_USE;
+    }
+    else
+      err = getstr(&config->etag_save_file, nextarg, DENY_BLANK);
+    break;
+  case C_ETAG_COMPARE: /* --etag-compare */
+    if(config->num_urls > 1) {
+      errorf("The etag options only work on a single URL");
+      err = PARAM_BAD_USE;
+    }
+    else
+      err = getstr(&config->etag_compare_file, nextarg, DENY_BLANK);
+    break;
+  case C_KEY: /* --key */
+    err = getstr(&config->key, nextarg, DENY_BLANK);
+    break;
+  case C_KNOWNHOSTS: /* --knownhosts */
+    err = getstr(&config->knownhosts, nextarg, DENY_BLANK);
+    break;
+  case C_NETRC_FILE: /* --netrc-file */
+    err = getstr(&config->netrc_file, nextarg, DENY_BLANK);
+    break;
+  case C_OUTPUT: /* --output */
+    err = parse_output(config, nextarg);
+    break;
+  case C_PROXY_CACERT: /* --proxy-cacert */
+    err = getstr(&config->proxy_cacert, nextarg, DENY_BLANK);
+    break;
+  case C_PROXY_CAPATH: /* --proxy-capath */
+    err = getstr(&config->proxy_capath, nextarg, DENY_BLANK);
+    break;
+  case C_PROXY_CERT: /* --proxy-cert */
+    GetFileAndPassword(nextarg, &config->proxy_cert,
+                       &config->proxy_key_passwd);
+    break;
+  case C_PROXY_CRLFILE: /* --proxy-crlfile */
+    err = getstr(&config->proxy_crlfile, nextarg, DENY_BLANK);
+    break;
+  case C_PROXY_KEY: /* --proxy-key */
+    err = getstr(&config->proxy_key, nextarg, ALLOW_BLANK);
+    break;
+  case C_SSL_SESSIONS: /* --ssl-sessions */
+    if(feature_ssls_export)
+      err = getstr(&global->ssl_sessions, nextarg, DENY_BLANK);
+    else
+      err = PARAM_LIBCURL_DOESNT_SUPPORT;
+    break;
+  case C_STDERR: /* --stderr */
+    tool_set_stderr_file(nextarg);
+    break;
+  case C_TRACE: /* --trace */
+    err = getstr(&global->trace_dump, nextarg, DENY_BLANK);
+    if(!err) {
+      if(global->tracetype && (global->tracetype != TRACE_BIN))
+        warnf("--trace overrides an earlier trace/verbose option");
+      global->tracetype = TRACE_BIN;
+    }
+    break;
+  case C_TRACE_ASCII: /* --trace-ascii */
+    err = getstr(&global->trace_dump, nextarg, DENY_BLANK);
+    if(!err) {
+      if(global->tracetype && (global->tracetype != TRACE_ASCII))
+        warnf("--trace-ascii overrides an earlier trace/verbose option");
+      global->tracetype = TRACE_ASCII;
+    }
+    break;
+  case C_UNIX_SOCKET: /* --unix-socket */
+    config->abstract_unix_socket = FALSE;
+    err = getstr(&config->unix_socket_path, nextarg, DENY_BLANK);
+    break;
+  case C_UPLOAD_FILE: /* --upload-file */
+    err = parse_upload_file(config, nextarg);
+    break;
+  }
+  return err;
+}
 
-/* opt_filestring handles string and file options */
-static ParameterError opt_filestring(struct OperationConfig *config,
-                                     const struct LongShort *a,
-                                     const char *nextarg)
+/* opt_string handles string options */
+static ParameterError opt_string(struct OperationConfig *config,
+                                 const struct LongShort *a,
+                                 const char *nextarg)
 {
   ParameterError err = PARAM_OK;
   curl_off_t value;
@@ -2170,22 +2286,6 @@ static ParameterError opt_filestring(struct OperationConfig *config,
       /* IP addrs of DNS servers */
       err = getstr(&config->dns_servers, nextarg, DENY_BLANK);
     break;
-  case C_TRACE: /* --trace */
-    err = getstr(&global->trace_dump, nextarg, DENY_BLANK);
-    if(!err) {
-      if(global->tracetype && (global->tracetype != TRACE_BIN))
-        warnf("--trace overrides an earlier trace/verbose option");
-      global->tracetype = TRACE_BIN;
-    }
-    break;
-  case C_TRACE_ASCII: /* --trace-ascii */
-    err = getstr(&global->trace_dump, nextarg, DENY_BLANK);
-    if(!err) {
-      if(global->tracetype && (global->tracetype != TRACE_ASCII))
-        warnf("--trace-ascii overrides an earlier trace/verbose option");
-      global->tracetype = TRACE_ASCII;
-    }
-    break;
   case C_LIMIT_RATE: /* --limit-rate */
     err = GetSizeParameter(nextarg, "rate", &value);
     if(!err) {
@@ -2215,19 +2315,9 @@ static ParameterError opt_filestring(struct OperationConfig *config,
     config->authtype |= CURLAUTH_AWS_SIGV4;
     err = getstr(&config->aws_sigv4, nextarg, ALLOW_BLANK);
     break;
-  case C_STDERR: /* --stderr */
-    tool_set_stderr_file(nextarg);
-    break;
   case C_INTERFACE: /* --interface */
     /* interface */
     err = getstr(&config->iface, nextarg, DENY_BLANK);
-    break;
-  case C_KRB: /* --krb */
-    /* kerberos level string */
-    if(!feature_spnego)
-      err = PARAM_LIBCURL_DOESNT_SUPPORT;
-    else
-      err = getstr(&config->krblevel, nextarg, DENY_BLANK);
     break;
   case C_HAPROXY_CLIENTIP: /* --haproxy-clientip */
     err = getstr(&config->haproxy_clientip, nextarg, DENY_BLANK);
@@ -2349,10 +2439,6 @@ static ParameterError opt_filestring(struct OperationConfig *config,
   case C_SASL_AUTHZID: /* --sasl-authzid */
     err = getstr(&config->sasl_authzid, nextarg, DENY_BLANK);
     break;
-  case C_UNIX_SOCKET: /* --unix-socket */
-    config->abstract_unix_socket = FALSE;
-    err = getstr(&config->unix_socket_path, nextarg, DENY_BLANK);
-    break;
   case C_PROXY_SERVICE_NAME: /* --proxy-service-name */
     err = getstr(&config->proxy_service_name, nextarg, DENY_BLANK);
     break;
@@ -2369,10 +2455,6 @@ static ParameterError opt_filestring(struct OperationConfig *config,
     break;
   case C_CONNECT_TO: /* --connect-to */
     err = add2list(&config->connect_to, nextarg);
-    break;
-  case C_ABSTRACT_UNIX_SOCKET: /* --abstract-unix-socket */
-    config->abstract_unix_socket = TRUE;
-    err = getstr(&config->unix_socket_path, nextarg, DENY_BLANK);
     break;
   case C_TLS_MAX: /* --tls-max */
     err = str2tls_max(&config->ssl_version_max, nextarg);
@@ -2442,9 +2524,6 @@ static ParameterError opt_filestring(struct OperationConfig *config,
   case C_URL_QUERY:  /* --url-query */
     err = url_query(nextarg, config);
     break;
-  case C_DUMP_HEADER: /* --dump-header */
-    err = getstr(&config->headerfile, nextarg, DENY_BLANK);
-    break;
   case C_REFERER: { /* --referer */
     size_t len = strlen(nextarg);
     /* does it end with ;auto ? */
@@ -2463,17 +2542,8 @@ static ParameterError opt_filestring(struct OperationConfig *config,
       tool_safefree(config->referer);
   }
     break;
-  case C_CERT: /* --cert */
-    GetFileAndPassword(nextarg, &config->cert, &config->key_passwd);
-    break;
-  case C_CACERT: /* --cacert */
-    err = getstr(&config->cacert, nextarg, DENY_BLANK);
-    break;
   case C_CERT_TYPE: /* --cert-type */
     err = getstr(&config->cert_type, nextarg, DENY_BLANK);
-    break;
-  case C_KEY: /* --key */
-    err = getstr(&config->key, nextarg, DENY_BLANK);
     break;
   case C_KEY_TYPE: /* --key-type */
     err = getstr(&config->key_type, nextarg, DENY_BLANK);
@@ -2491,9 +2561,6 @@ static ParameterError opt_filestring(struct OperationConfig *config,
   case C_ECH: /* --ech */
     err = parse_ech(config, nextarg);
     break;
-  case C_CAPATH: /* --capath */
-    err = getstr(&config->capath, nextarg, DENY_BLANK);
-    break;
   case C_PUBKEY: /* --pubkey */
     err = getstr(&config->pubkey, nextarg, DENY_BLANK);
     break;
@@ -2509,9 +2576,6 @@ static ParameterError opt_filestring(struct OperationConfig *config,
       err = PARAM_LIBCURL_DOESNT_SUPPORT;
     else
       err = getstr(&config->hostpubsha256, nextarg, DENY_BLANK);
-    break;
-  case C_CRLFILE: /* --crlfile */
-    err = getstr(&config->crlfile, nextarg, DENY_BLANK);
     break;
   case C_TLSUSER: /* --tlsuser */
     if(!feature_tls_srp)
@@ -2540,12 +2604,6 @@ static ParameterError opt_filestring(struct OperationConfig *config,
   case C_PROXY_PINNEDPUBKEY: /* --proxy-pinnedpubkey */
     err = getstr(&config->proxy_pinnedpubkey, nextarg, DENY_BLANK);
     break;
-  case C_SSL_SESSIONS: /* --ssl-sessions */
-    if(feature_ssls_export)
-      err = getstr(&global->ssl_sessions, nextarg, DENY_BLANK);
-    else
-      err = PARAM_LIBCURL_DOESNT_SUPPORT;
-    break;
   case C_PROXY_TLSUSER: /* --proxy-tlsuser */
     if(!feature_tls_srp)
       err = PARAM_LIBCURL_DOESNT_SUPPORT;
@@ -2568,15 +2626,8 @@ static ParameterError opt_filestring(struct OperationConfig *config,
         err = PARAM_LIBCURL_DOESNT_SUPPORT; /* only support TLS-SRP */
     }
     break;
-  case C_PROXY_CERT: /* --proxy-cert */
-    GetFileAndPassword(nextarg, &config->proxy_cert,
-                       &config->proxy_key_passwd);
-    break;
   case C_PROXY_CERT_TYPE: /* --proxy-cert-type */
     err = getstr(&config->proxy_cert_type, nextarg, DENY_BLANK);
-    break;
-  case C_PROXY_KEY: /* --proxy-key */
-    err = getstr(&config->proxy_key, nextarg, ALLOW_BLANK);
     break;
   case C_PROXY_KEY_TYPE: /* --proxy-key-type */
     err = getstr(&config->proxy_key_type, nextarg, DENY_BLANK);
@@ -2587,33 +2638,8 @@ static ParameterError opt_filestring(struct OperationConfig *config,
   case C_PROXY_CIPHERS: /* --proxy-ciphers */
     err = getstr(&config->proxy_cipher_list, nextarg, DENY_BLANK);
     break;
-  case C_PROXY_CRLFILE: /* --proxy-crlfile */
-    err = getstr(&config->proxy_crlfile, nextarg, DENY_BLANK);
-    break;
   case C_LOGIN_OPTIONS: /* --login-options */
     err = getstr(&config->login_options, nextarg, ALLOW_BLANK);
-    break;
-  case C_PROXY_CACERT: /* --proxy-cacert */
-    err = getstr(&config->proxy_cacert, nextarg, DENY_BLANK);
-    break;
-  case C_PROXY_CAPATH: /* --proxy-capath */
-    err = getstr(&config->proxy_capath, nextarg, DENY_BLANK);
-    break;
-  case C_ETAG_SAVE: /* --etag-save */
-    if(config->num_urls > 1) {
-      errorf("The etag options only work on a single URL");
-      err = PARAM_BAD_USE;
-    }
-    else
-      err = getstr(&config->etag_save_file, nextarg, DENY_BLANK);
-    break;
-  case C_ETAG_COMPARE: /* --etag-compare */
-    if(config->num_urls > 1) {
-      errorf("The etag options only work on a single URL");
-      err = PARAM_BAD_USE;
-    }
-    else
-      err = getstr(&config->etag_compare_file, nextarg, DENY_BLANK);
     break;
   case C_CURVES: /* --curves */
     err = getstr(&config->ssl_ec_curves, nextarg, DENY_BLANK);
@@ -2638,24 +2664,12 @@ static ParameterError opt_filestring(struct OperationConfig *config,
   case C_PROXY_HEADER: /* --proxy-header */
     err = parse_header(config, (cmdline_t)a->cmd, nextarg);
     break;
-  case C_CONFIG: /* --config */
-    if(parseconfig(nextarg)) {
-      errorf("cannot read config from '%s'", nextarg);
-      err = PARAM_READ_ERROR;
-    }
-    break;
   case C_MAX_TIME: /* --max-time */
     /* specified max time */
     err = secs2ms(&config->timeout_ms, nextarg);
     break;
-  case C_NETRC_FILE: /* --netrc-file */
-    err = getstr(&config->netrc_file, nextarg, DENY_BLANK);
-    break;
   case C_OUTPUT_DIR: /* --output-dir */
     err = getstr(&config->output_dir, nextarg, DENY_BLANK);
-    break;
-  case C_OUTPUT: /* --output */
-    err = parse_output(config, nextarg);
     break;
   case C_FTP_PORT: /* --ftp-port */
     /* This makes the FTP sessions use PORT instead of PASV */
@@ -2678,9 +2692,6 @@ static ParameterError opt_filestring(struct OperationConfig *config,
   case C_TELNET_OPTION: /* --telnet-option */
     /* Telnet options */
     err = add2list(&config->telnet_options, nextarg);
-    break;
-  case C_UPLOAD_FILE: /* --upload-file */
-    err = parse_upload_file(config, nextarg);
     break;
   case C_USER: /* --user */
     /* user:password  */
@@ -2728,7 +2739,6 @@ static ParameterError opt_filestring(struct OperationConfig *config,
       global->parallel_host = PARALLEL_HOST_DEFAULT;
     else
       global->parallel_host = (unsigned short)val;
-    break;
     break;
   case C_PARALLEL_MAX:  /* --parallel-max */
     err = str2unum(&val, nextarg);
@@ -2890,18 +2900,14 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
         break;
       }
 
-      if((ARGTYPE(a->desc) == ARG_FILE) &&
-         (nextarg[0] == '-') && nextarg[1]) {
-        /* if the filename looks like a command line option */
-        warnf("The filename argument '%s' looks like a flag.",
-              nextarg);
-      }
-      else if(has_leading_unicode((const unsigned char *)nextarg)) {
+      if(has_leading_unicode((const unsigned char *)nextarg)) {
         warnf("The argument '%s' starts with a Unicode character. "
               "Maybe ASCII was intended?", nextarg);
       }
-      /* ARG_FILE | ARG_STRG */
-      err = opt_filestring(config, a, nextarg);
+      if(ARGTYPE(a->desc) == ARG_FILE)
+        err = opt_file(config, a, nextarg);
+      else /* if(ARGTYPE(a->desc) == ARG_STRG) */
+        err = opt_string(config, a, nextarg);
       if(a->desc & ARG_CLEAR)
         cleanarg(CURL_UNCONST(nextarg));
     }

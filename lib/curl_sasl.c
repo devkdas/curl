@@ -51,8 +51,8 @@
 #include "curl_sasl.h"
 #include "curlx/warnless.h"
 #include "sendf.h"
-/* The last 3 #include files should be in this order */
-#include "curl_printf.h"
+
+/* The last 2 #include files should be in this order */
 #include "curl_memory.h"
 #include "memdebug.h"
 
@@ -812,7 +812,9 @@ CURLcode Curl_sasl_continue(struct SASL *sasl, struct Curl_easy *data,
 
   case SASL_CANCEL:
     /* Remove the offending mechanism from the supported list */
-    sasl->authmechs ^= sasl->authused;
+    sasl->authmechs &= (unsigned short)~sasl->authused;
+    sasl->authused = SASL_AUTH_NONE;
+    sasl->curmech = NULL;
 
     /* Start an alternative SASL authentication */
     return Curl_sasl_start(sasl, data, sasl->force_ir, progress);

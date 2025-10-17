@@ -37,8 +37,7 @@
 #include "curlx/warnless.h"
 #include "strdup.h"
 
-/* The last 3 #include files should be in this order */
-#include "curl_printf.h"
+/* The last 2 #include files should be in this order */
 #include "curl_memory.h"
 #include "memdebug.h"
 
@@ -48,8 +47,6 @@
 #endif
 
 #define MAX_GSS_LEN 1024
-
-static gss_ctx_id_t gss_context = GSS_C_NO_CONTEXT;
 
 /*
  * Helper GSS-API error functions.
@@ -134,6 +131,8 @@ CURLcode Curl_SOCKS5_gssapi_negotiate(struct Curl_cfilter *cf,
   const char *serviceptr = data->set.str[STRING_PROXY_SERVICE_NAME] ?
                            data->set.str[STRING_PROXY_SERVICE_NAME] : "rcmd";
   const size_t serviceptr_length = strlen(serviceptr);
+  gss_ctx_id_t gss_context = GSS_C_NO_CONTEXT;
+
 
   /*   GSS-API request looks like
    * +----+------+-----+----------------+
@@ -160,8 +159,8 @@ CURLcode Curl_SOCKS5_gssapi_negotiate(struct Curl_cfilter *cf,
       return CURLE_OUT_OF_MEMORY;
     service.length = serviceptr_length +
       strlen(conn->socks_proxy.host.name) + 1;
-    msnprintf(service.value, service.length + 1, "%s@%s",
-              serviceptr, conn->socks_proxy.host.name);
+    curl_msnprintf(service.value, service.length + 1, "%s@%s",
+                   serviceptr, conn->socks_proxy.host.name);
 
     gss_major_status = gss_import_name(&gss_minor_status, &service,
                                        GSS_C_NT_HOSTBASED_SERVICE, &server);
@@ -195,9 +194,10 @@ CURLcode Curl_SOCKS5_gssapi_negotiate(struct Curl_cfilter *cf,
     if(gss_token != GSS_C_NO_BUFFER)
       gss_release_buffer(&gss_status, &gss_recv_token);
     if(check_gss_err(data, gss_major_status,
-                     gss_minor_status, "gss_init_sec_context")) {
+                     gss_minor_status, "gss_init_sec_context") ||
+       /* the size needs to fit in a 16 bit field */
+       (gss_send_token.length > 0xffff)) {
       gss_release_name(&gss_status, &server);
-      gss_release_buffer(&gss_status, &gss_recv_token);
       gss_release_buffer(&gss_status, &gss_send_token);
       Curl_gss_delete_sec_context(&gss_status, &gss_context, NULL);
       failf(data, "Failed to initial GSS-API token.");
@@ -215,7 +215,6 @@ CURLcode Curl_SOCKS5_gssapi_negotiate(struct Curl_cfilter *cf,
       if(code || (nwritten != 4)) {
         failf(data, "Failed to send GSS-API authentication request.");
         gss_release_name(&gss_status, &server);
-        gss_release_buffer(&gss_status, &gss_recv_token);
         gss_release_buffer(&gss_status, &gss_send_token);
         Curl_gss_delete_sec_context(&gss_status, &gss_context, NULL);
         return CURLE_COULDNT_CONNECT;
@@ -227,7 +226,6 @@ CURLcode Curl_SOCKS5_gssapi_negotiate(struct Curl_cfilter *cf,
       if(code || (gss_send_token.length != nwritten)) {
         failf(data, "Failed to send GSS-API authentication token.");
         gss_release_name(&gss_status, &server);
-        gss_release_buffer(&gss_status, &gss_recv_token);
         gss_release_buffer(&gss_status, &gss_send_token);
         Curl_gss_delete_sec_context(&gss_status, &gss_context, NULL);
         return CURLE_COULDNT_CONNECT;
@@ -236,7 +234,6 @@ CURLcode Curl_SOCKS5_gssapi_negotiate(struct Curl_cfilter *cf,
     }
 
     gss_release_buffer(&gss_status, &gss_send_token);
-    gss_release_buffer(&gss_status, &gss_recv_token);
     if(gss_major_status != GSS_S_CONTINUE_NEEDED)
       break;
 
@@ -357,8 +354,7 @@ CURLcode Curl_SOCKS5_gssapi_negotiate(struct Curl_cfilter *cf,
   infof(data, "SOCKS5 server supports GSS-API %s data protection.",
         (gss_enc == 0) ? "no" :
         ((gss_enc == 1) ? "integrity" : "confidentiality"));
-  /* force for the moment to no data protection */
-  gss_enc = 0;
+
   /*
    * Sending the encryption type in clear seems wrong. It should be
    * protected with gss_seal()/gss_wrap(). See RFC1961 extract below

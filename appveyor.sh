@@ -34,7 +34,9 @@ case "${TARGET:-}" in
 esac
 
 if [ "${APPVEYOR_BUILD_WORKER_IMAGE}" = 'Visual Studio 2022' ]; then
-  openssl_root_win="C:/OpenSSL-v34${openssl_suffix}"
+  openssl_root_win="C:/OpenSSL-v35${openssl_suffix}"
+elif [ "${APPVEYOR_BUILD_WORKER_IMAGE}" = 'Visual Studio 2019' ]; then
+  openssl_root_win="C:/OpenSSL-v30${openssl_suffix}"
 else
   openssl_root_win="C:/OpenSSL-v111${openssl_suffix}"
 fi
@@ -94,29 +96,6 @@ elif [ "${BUILD_SYSTEM}" = 'VisualStudioSolution' ]; then
     msbuild.exe -maxcpucount "-property:Configuration=${PRJ_CFG}" "Windows/${VC_VERSION}/curl-all.sln"
   )
   curl="build/Win32/${VC_VERSION}/${PRJ_CFG}/curld.exe"
-elif [ "${BUILD_SYSTEM}" = 'winbuild_vs2015' ]; then
-  (
-    cd winbuild
-    cat << EOF > _make.bat
-      call "C:/Program Files/Microsoft SDKs/Windows/v7.1/Bin/SetEnv.cmd" /x64
-      call "C:/Program Files (x86)/Microsoft Visual Studio 14.0/VC/vcvarsall.bat" x86_amd64
-      nmake -f Makefile.vc mode=dll VC=14 "SSL_PATH=${openssl_root_win}" WITH_SSL=dll MACHINE=x64 DEBUG=${DEBUG} ENABLE_UNICODE=${ENABLE_UNICODE} WINBUILD_ACKNOWLEDGE_DEPRECATED=yes
-EOF
-    ./_make.bat
-    rm _make.bat
-  )
-  curl="builds/libcurl-vc14-x64-${PATHPART}-dll-ssl-dll-ipv6-sspi/bin/curl.exe"
-elif [ "${BUILD_SYSTEM}" = 'winbuild_vs2017' ]; then
-  (
-    cd winbuild
-    cat << EOF > _make.bat
-      call "C:/Program Files (x86)/Microsoft Visual Studio/2017/Community/VC/Auxiliary/Build/vcvars64.bat"
-      nmake -f Makefile.vc mode=dll VC=14.10 "SSL_PATH=${openssl_root_win}" WITH_SSL=dll MACHINE=x64 DEBUG=${DEBUG} ENABLE_UNICODE=${ENABLE_UNICODE} WINBUILD_ACKNOWLEDGE_DEPRECATED=yes
-EOF
-    ./_make.bat
-    rm _make.bat
-  )
-  curl="builds/libcurl-vc14.10-x64-${PATHPART}-dll-ssl-dll-ipv6-sspi/bin/curl.exe"
 fi
 
 find . \( -name '*.exe' -o -name '*.dll' -o -name '*.lib' -o -name '*.pdb' \) -exec file '{}' \;

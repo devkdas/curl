@@ -67,8 +67,7 @@
 #include "mbedtls_threadlock.h"
 #include "../strdup.h"
 
-/* The last 3 #include files should be in this order */
-#include "../curl_printf.h"
+/* The last 2 #include files should be in this order */
 #include "../curl_memory.h"
 #include "../memdebug.h"
 
@@ -307,7 +306,7 @@ mbed_cipher_suite_get_str(uint16_t id, char *buf, size_t buf_size,
                           bool prefer_rfc)
 {
   if(id == MBEDTLS_TLS_ECJPAKE_WITH_AES_128_CCM_8)
-    msnprintf(buf, buf_size, "%s", "TLS_ECJPAKE_WITH_AES_128_CCM_8");
+    curl_msnprintf(buf, buf_size, "%s", "TLS_ECJPAKE_WITH_AES_128_CCM_8");
   else
     return Curl_cipher_suite_get_str(id, buf, buf_size, prefer_rfc);
   return 0;
@@ -918,6 +917,7 @@ mbed_connect_step1(struct Curl_cfilter *cf, struct Curl_easy *data)
 static CURLcode
 mbed_connect_step2(struct Curl_cfilter *cf, struct Curl_easy *data)
 {
+  CURLcode result;
   int ret;
   struct ssl_connect_data *connssl = cf->ctx;
   struct mbed_ssl_backend_data *backend =
@@ -968,7 +968,6 @@ mbed_connect_step2(struct Curl_cfilter *cf, struct Curl_easy *data)
 
   if(pinnedpubkey) {
     int size;
-    CURLcode result;
     const mbedtls_x509_crt *peercert;
     mbedtls_x509_crt *p = NULL;
     unsigned char *pubkey = NULL;
@@ -1018,17 +1017,19 @@ pinnedpubkey_error:
     mbedtls_x509_crt_free(p);
     free(p);
     free(pubkey);
-    if(result) {
+    if(result)
       return result;
-    }
   }
 
 #ifdef HAS_ALPN_MBEDTLS
   if(connssl->alpn) {
     const char *proto = mbedtls_ssl_get_alpn_protocol(&backend->ssl);
 
-    Curl_alpn_set_negotiated(cf, data, connssl, (const unsigned char *)proto,
-                             proto ? strlen(proto) : 0);
+    result = Curl_alpn_set_negotiated(cf, data, connssl,
+                                      (const unsigned char *)proto,
+                                      proto ? strlen(proto) : 0);
+    if(result)
+      return result;
   }
 #endif
 
@@ -1113,8 +1114,9 @@ static CURLcode mbed_send(struct Curl_cfilter *cf, struct Curl_easy *data,
   int nwritten;
 
   (void)data;
-  *pnwritten = 0;
   DEBUGASSERT(backend);
+  *pnwritten = 0;
+  connssl->io_need = CURL_SSL_IO_NEED_NONE;
   /* mbedtls is picky when a mbedtls_ssl_write) was previously blocked.
    * It requires to be called with the same amount of bytes again, or it
    * will lose bytes, e.g. reporting all was sent but they were not.
@@ -1135,11 +1137,22 @@ static CURLcode mbed_send(struct Curl_cfilter *cf, struct Curl_easy *data,
   else {
     CURL_TRC_CF(data, cf, "mbedtls_ssl_write(len=%zu) -> -0x%04X",
                 len, -nwritten);
-    result = ((nwritten == MBEDTLS_ERR_SSL_WANT_WRITE)
+    switch(nwritten) {
 #ifdef MBEDTLS_SSL_PROTO_TLS1_3
-      || (nwritten == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET)
+    case MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET:
 #endif
-      ) ? CURLE_AGAIN : CURLE_SEND_ERROR;
+    case MBEDTLS_ERR_SSL_WANT_READ:
+      connssl->io_need = CURL_SSL_IO_NEED_RECV;
+      result = CURLE_AGAIN;
+      break;
+    case MBEDTLS_ERR_SSL_WANT_WRITE:
+      connssl->io_need = CURL_SSL_IO_NEED_SEND;
+      result = CURLE_AGAIN;
+      break;
+    default:
+      result = CURLE_SEND_ERROR;
+      break;
+    }
     if((result == CURLE_AGAIN) && !backend->send_blocked) {
       backend->send_blocked = TRUE;
       backend->send_blocked_len = len;
@@ -1160,7 +1173,7 @@ static CURLcode mbedtls_shutdown(struct Curl_cfilter *cf,
     (struct mbed_ssl_backend_data *)connssl->backend;
   unsigned char buf[1024];
   CURLcode result = CURLE_OK;
-  int ret;
+  int ret = 0;
   size_t i;
 
   DEBUGASSERT(backend);
@@ -1280,6 +1293,7 @@ static CURLcode mbed_recv(struct Curl_cfilter *cf, struct Curl_easy *data,
   (void)data;
   DEBUGASSERT(backend);
   *pnread = 0;
+  connssl->io_need = CURL_SSL_IO_NEED_NONE;
 
   nread = mbedtls_ssl_read(&backend->ssl, (unsigned char *)buf, buffersize);
   if(nread > 0)
@@ -1294,6 +1308,11 @@ static CURLcode mbed_recv(struct Curl_cfilter *cf, struct Curl_easy *data,
       FALLTHROUGH();
 #endif
     case MBEDTLS_ERR_SSL_WANT_READ:
+      connssl->io_need = CURL_SSL_IO_NEED_RECV;
+      result = CURLE_AGAIN;
+      break;
+    case MBEDTLS_ERR_SSL_WANT_WRITE:
+      connssl->io_need = CURL_SSL_IO_NEED_SEND;
       result = CURLE_AGAIN;
       break;
     case MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY:
@@ -1316,10 +1335,10 @@ static size_t mbedtls_version(char *buffer, size_t size)
 #ifdef MBEDTLS_VERSION_C
   /* if mbedtls_version_get_number() is available it is better */
   unsigned int version = mbedtls_version_get_number();
-  return msnprintf(buffer, size, "mbedTLS/%u.%u.%u", version >> 24,
-                   (version >> 16) & 0xff, (version >> 8) & 0xff);
+  return curl_msnprintf(buffer, size, "mbedTLS/%u.%u.%u", version >> 24,
+                        (version >> 16) & 0xff, (version >> 8) & 0xff);
 #else
-  return msnprintf(buffer, size, "mbedTLS/%s", MBEDTLS_VERSION_STRING);
+  return curl_msnprintf(buffer, size, "mbedTLS/%s", MBEDTLS_VERSION_STRING);
 #endif
 }
 

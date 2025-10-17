@@ -10,6 +10,7 @@
 # https://github.com/actions/labeler
 
 name: 'Labeler'
+
 'on': [pull_request_target]  # zizmor: ignore[dangerous-triggers]
 
 permissions: {}
@@ -19,10 +20,10 @@ jobs:
     name: 'Labeler'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: write
+      contents: read        # To comply with https://github.com/actions/labeler documentation
+      pull-requests: write  # To edit labels on PRs
 
     steps:
-      - uses: actions/labeler@634933edcd8ababfe52f92936142cc22ac488b1b # v6
+      - uses: actions/labeler@634933edcd8ababfe52f92936142cc22ac488b1b # v6.0.1
         with:
           repo-token: '${{ secrets.GITHUB_TOKEN }}'

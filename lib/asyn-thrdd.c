@@ -73,8 +73,7 @@
 #endif
 #endif
 
-/* The last 3 #include files should be in this order */
-#include "curl_printf.h"
+/* The last 2 #include files should be in this order */
 #include "curl_memory.h"
 #include "memdebug.h"
 
@@ -199,14 +198,6 @@ err_exit:
   return NULL;
 }
 
-static void async_thrd_cleanup(void *arg)
-{
-  struct async_thrdd_addr_ctx *addr_ctx = arg;
-
-  Curl_thread_disable_cancel();
-  addr_ctx_unlink(&addr_ctx, NULL);
-}
-
 #ifdef HAVE_GETADDRINFO
 
 /*
@@ -220,15 +211,6 @@ static CURL_THREAD_RETURN_T CURL_STDCALL getaddrinfo_thread(void *arg)
   struct async_thrdd_addr_ctx *addr_ctx = arg;
   bool do_abort;
 
-/* clang complains about empty statements and the pthread_cleanup* macros
- * are pretty ill defined. */
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wextra-semi-stmt"
-#endif
-
-  Curl_thread_push_cleanup(async_thrd_cleanup, addr_ctx);
-
   Curl_mutex_acquire(&addr_ctx->mutx);
   do_abort = addr_ctx->do_abort;
   Curl_mutex_release(&addr_ctx->mutx);
@@ -237,10 +219,7 @@ static CURL_THREAD_RETURN_T CURL_STDCALL getaddrinfo_thread(void *arg)
     char service[12];
     int rc;
 
-#ifdef DEBUGBUILD
-    Curl_resolve_test_delay();
-#endif
-    msnprintf(service, sizeof(service), "%d", addr_ctx->port);
+    curl_msnprintf(service, sizeof(service), "%d", addr_ctx->port);
 
     rc = Curl_getaddrinfo_ex(addr_ctx->hostname, service,
                              &addr_ctx->hints, &addr_ctx->res);
@@ -274,11 +253,6 @@ static CURL_THREAD_RETURN_T CURL_STDCALL getaddrinfo_thread(void *arg)
 
   }
 
-  Curl_thread_pop_cleanup();
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
-
   addr_ctx_unlink(&addr_ctx, NULL);
   return 0;
 }
@@ -293,24 +267,11 @@ static CURL_THREAD_RETURN_T CURL_STDCALL gethostbyname_thread(void *arg)
   struct async_thrdd_addr_ctx *addr_ctx = arg;
   bool do_abort;
 
-/* clang complains about empty statements and the pthread_cleanup* macros
- * are pretty ill defined. */
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wextra-semi-stmt"
-#endif
-
-  Curl_thread_push_cleanup(async_thrd_cleanup, addr_ctx);
-
   Curl_mutex_acquire(&addr_ctx->mutx);
   do_abort = addr_ctx->do_abort;
   Curl_mutex_release(&addr_ctx->mutx);
 
   if(!do_abort) {
-#ifdef DEBUGBUILD
-    Curl_resolve_test_delay();
-#endif
-
     addr_ctx->res = Curl_ipv4_resolve_r(addr_ctx->hostname, addr_ctx->port);
     if(!addr_ctx->res) {
       addr_ctx->sock_error = SOCKERRNO;
@@ -337,12 +298,7 @@ static CURL_THREAD_RETURN_T CURL_STDCALL gethostbyname_thread(void *arg)
 #endif
   }
 
-  Curl_thread_pop_cleanup();
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
-
-  async_thrd_cleanup(addr_ctx);
+  addr_ctx_unlink(&addr_ctx, NULL);
   return 0;
 }
 
@@ -381,12 +337,12 @@ static void async_thrdd_destroy(struct Curl_easy *data)
       CURL_TRC_DNS(data, "async_thrdd_destroy, thread joined");
     }
     else {
-      /* thread is still running. Detach the thread while mutexed, it will
-       * trigger the cleanup when it releases its reference. */
+      /* thread is still running. Detach it. */
       Curl_thread_destroy(&addr->thread_hnd);
       CURL_TRC_DNS(data, "async_thrdd_destroy, thread detached");
     }
   }
+  /* release our reference to the shared context */
   addr_ctx_unlink(&thrdd->addr, data);
 }
 
@@ -532,10 +488,12 @@ static void async_thrdd_shutdown(struct Curl_easy *data)
   done = addr_ctx->thrd_done;
   Curl_mutex_release(&addr_ctx->mutx);
 
-  DEBUGASSERT(addr_ctx->thread_hnd != curl_thread_t_null);
-  if(!done && (addr_ctx->thread_hnd != curl_thread_t_null)) {
-    CURL_TRC_DNS(data, "cancelling resolve thread");
-    (void)Curl_thread_cancel(&addr_ctx->thread_hnd);
+  /* Wait for the thread to terminate if it is already marked done. If it is
+     not done yet we cannot do anything here. We had tried pthread_cancel but
+     it caused hanging and resource leaks (#18532). */
+  if(done && (addr_ctx->thread_hnd != curl_thread_t_null)) {
+    Curl_thread_join(&addr_ctx->thread_hnd);
+    CURL_TRC_DNS(data, "async_thrdd_shutdown, thread joined");
   }
 }
 
@@ -553,9 +511,11 @@ static CURLcode asyn_thrdd_await(struct Curl_easy *data,
     if(!entry)
       async_thrdd_shutdown(data);
 
-    CURL_TRC_DNS(data, "resolve, wait for thread to finish");
-    if(!Curl_thread_join(&addr_ctx->thread_hnd)) {
-      DEBUGASSERT(0);
+    if(addr_ctx->thread_hnd != curl_thread_t_null) {
+      CURL_TRC_DNS(data, "resolve, wait for thread to finish");
+      if(!Curl_thread_join(&addr_ctx->thread_hnd)) {
+        DEBUGASSERT(0);
+      }
     }
 
     if(entry)
@@ -650,6 +610,7 @@ CURLcode Curl_async_is_resolved(struct Curl_easy *data,
 
     data->state.async.done = TRUE;
     Curl_resolv_unlink(data, &data->state.async.dns);
+    Curl_expire_done(data, EXPIRE_ASYNC_NAME);
 
     if(thrdd->addr->res) {
       data->state.async.dns =

@@ -80,17 +80,16 @@ Example set of cookies:
 #include "slist.h"
 #include "share.h"
 #include "strcase.h"
+#include "curl_fopen.h"
 #include "curl_get_line.h"
 #include "curl_memrchr.h"
 #include "parsedate.h"
 #include "rename.h"
-#include "fopen.h"
 #include "strdup.h"
 #include "llist.h"
 #include "curlx/strparse.h"
 
-/* The last 3 #include files should be in this order */
-#include "curl_printf.h"
+/* The last 2 #include files should be in this order */
 #include "curl_memory.h"
 #include "memdebug.h"
 
@@ -1195,7 +1194,7 @@ struct CookieInfo *Curl_cookie_init(struct Curl_easy *data,
       if(!strcmp(file, "-"))
         fp = stdin;
       else {
-        fp = fopen(file, "rb");
+        fp = curlx_fopen(file, "rb");
         if(!fp)
           infof(data, "WARNING: failed to open cookie file \"%s\"", file);
         else
@@ -1228,7 +1227,7 @@ struct CookieInfo *Curl_cookie_init(struct Curl_easy *data,
       remove_expired(ci);
 
       if(handle)
-        fclose(handle);
+        curlx_fclose(handle);
     }
     data->state.cookie_engine = TRUE;
   }
@@ -1479,7 +1478,7 @@ void Curl_cookie_cleanup(struct CookieInfo *ci)
  */
 static char *get_netscape_format(const struct Cookie *co)
 {
-  return aprintf(
+  return curl_maprintf(
     "%s"     /* httponly preamble */
     "%s%s\t" /* domain */
     "%s\t"   /* tailmatch */
@@ -1575,7 +1574,7 @@ static CURLcode cookie_output(struct Curl_easy *data,
         error = CURLE_OUT_OF_MEMORY;
         goto error;
       }
-      fprintf(out, "%s\n", format_ptr);
+      curl_mfprintf(out, "%s\n", format_ptr);
       free(format_ptr);
     }
 
@@ -1583,7 +1582,7 @@ static CURLcode cookie_output(struct Curl_easy *data,
   }
 
   if(!use_stdout) {
-    fclose(out);
+    curlx_fclose(out);
     out = NULL;
     if(tempstore && Curl_rename(tempstore, filename)) {
       unlink(tempstore);
@@ -1602,7 +1601,7 @@ static CURLcode cookie_output(struct Curl_easy *data,
 
 error:
   if(out && !use_stdout)
-    fclose(out);
+    curlx_fclose(out);
   free(tempstore);
   return error;
 }
@@ -1658,17 +1657,17 @@ void Curl_flush_cookies(struct Curl_easy *data, bool cleanup)
 {
   CURLcode res;
 
-  if(data->set.str[STRING_COOKIEJAR]) {
-    Curl_share_lock(data, CURL_LOCK_DATA_COOKIE, CURL_LOCK_ACCESS_SINGLE);
-
+  Curl_share_lock(data, CURL_LOCK_DATA_COOKIE, CURL_LOCK_ACCESS_SINGLE);
+  /* only save the cookie file if a transfer was started (data->state.url is
+     set), as otherwise the cookies were not completely initialized and there
+     might be cookie files that weren't loaded so saving the file is the wrong
+     thing. */
+  if(data->set.str[STRING_COOKIEJAR] && data->state.url) {
     /* if we have a destination file for all the cookies to get dumped to */
     res = cookie_output(data, data->cookies, data->set.str[STRING_COOKIEJAR]);
     if(res)
       infof(data, "WARNING: failed to save cookies in %s: %s",
             data->set.str[STRING_COOKIEJAR], curl_easy_strerror(res));
-  }
-  else {
-    Curl_share_lock(data, CURL_LOCK_DATA_COOKIE, CURL_LOCK_ACCESS_SINGLE);
   }
 
   if(cleanup && (!data->share || (data->cookies != data->share->cookies))) {
