@@ -33,12 +33,12 @@
 /* A minimal set of easy setopt options listed in alphabetical order */
 const struct curl_easyoption Curl_easyopts[] = {
   /* Essential options for basic functionality and testing lookup */
-  { "CURLOPT_HTTPHEADER", CURLOPT_HTTPHEADER, CURLOT_SLISTPOINT, 0 },
-  { "CURLOPT_POSTFIELDS", CURLOPT_POSTFIELDS, CURLOT_OBJECTPOINT, 0 },
+  { "CURLOPT_HTTPHEADER", CURLOPT_HTTPHEADER, CURLOT_SLIST, 0 },
+  { "CURLOPT_POSTFIELDS", CURLOPT_POSTFIELDS, CURLOT_OBJECT, 0 },
   { "CURLOPT_QUIC_VERSION", CURLOPT_QUIC_VERSION, CURLOT_LONG, 0 }, /* The new option */
-  { "CURLOPT_URL", CURLOPT_URL, CURLOT_STRINGPOINT, 0 },
-  { "CURLOPT_WRITEDATA", CURLOPT_WRITEDATA, CURLOT_CBPOINT, 0 },
-  { "CURLOPT_WRITEFUNCTION", CURLOPT_WRITEFUNCTION, CURLOT_FUNCTIONPOINT, 0 },
+  { "CURLOPT_URL", CURLOPT_URL, CURLOT_STRING, 0 },
+  { "CURLOPT_WRITEDATA", CURLOPT_WRITEDATA, CURLOT_CBPTR, 0 },
+  { "CURLOPT_WRITEFUNCTION", CURLOPT_WRITEFUNCTION, CURLOT_FUNCTION, 0 },
   /* Add more options here if test 1918 or basic operations require them */
   /* For example, options used by default or by other tests might be needed */
   { "CURLOPT_VERBOSE", CURLOPT_VERBOSE, CURLOT_LONG, 0 },
