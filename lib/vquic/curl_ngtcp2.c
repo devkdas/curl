@@ -115,8 +115,8 @@ void Curl_ngtcp2_ver(char *p, size_t len)
 {
   const ngtcp2_info *ng2 = ngtcp2_version(0);
   const nghttp3_info *ht3 = nghttp3_version(0);
-  (void)msnprintf(p, len, "ngtcp2/%s nghttp3/%s",
-                  ng2->version_str, ht3->version_str);
+  (void)curl_msnprintf(p, len, "ngtcp2/%s nghttp3/%s",
+                      ng2->version_str, ht3->version_str);
 }
 
 struct cf_ngtcp2_ctx {
@@ -2009,16 +2009,6 @@ static CURLcode cf_ngtcp2_cntrl(struct Curl_cfilter *cf,
     }
     break;
   }
-  case CF_CTRL_DATA_IDLE: {
-    struct h3_stream_ctx *stream = H3_STREAM_CTX(ctx, data);
-    CURL_TRC_CF(data, cf, "data idle");
-    if(stream && !stream->closed) {
-      result = check_and_set_expiry(cf, data, NULL);
-      if(result)
-        CURL_TRC_CF(data, cf, "data idle, check_and_set_expiry -> %d", result);
-    }
-    break;
-  }
   case CF_CTRL_CONN_INFO_UPDATE:
     if(!cf->sockindex && cf->connected)
       cf->conn->httpversion_seen = 30;
@@ -2482,7 +2472,8 @@ static CURLcode cf_connect_start(struct Curl_cfilter *cf,
   if(result)
     return result;
 
-  Curl_cf_socket_peek(cf->next, data, &ctx->q.sockfd, &sockaddr, NULL);
+  if(Curl_cf_socket_peek(cf->next, data, &ctx->q.sockfd, &sockaddr, NULL))
+    return CURLE_QUIC_CONNECT_ERROR;
   if(!sockaddr)
     return CURLE_QUIC_CONNECT_ERROR;
   ctx->q.local_addrlen = sizeof(ctx->q.local_addr);
@@ -2626,9 +2617,10 @@ out:
   if(result) {
     struct ip_quadruple ip;
 
-    Curl_cf_socket_peek(cf->next, data, NULL, NULL, &ip);
-    infof(data, "QUIC connect to %s port %u failed: %s",
-          ip.remote_ip, ip.remote_port, curl_easy_strerror(result));
+    if(!Curl_cf_socket_peek(cf->next, data, NULL, NULL, &ip)) {
+      infof(data, "QUIC connect to %s port %u failed: %s",
+            ip.remote_ip, ip.remote_port, curl_easy_strerror(result));
+    }
   }
 #endif
   if(!result && ctx->qconn) {
@@ -2814,7 +2806,7 @@ out:
   *pcf = (!result) ? cf : NULL;
   if(result) {
     if(udp_cf)
-      Curl_conn_cf_discard_sub(cf, udp_cf, data, TRUE);
+      Curl_conn_cf_discard(&udp_cf, data);
     Curl_safefree(cf);
     cf_ngtcp2_ctx_free(ctx);
   }
