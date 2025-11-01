@@ -37,7 +37,6 @@
 #include "curl_sspi.h"
 #include "curlx/multibyte.h"
 #include "curlx/warnless.h"
-#include "strdup.h"
 
 /* The last 2 #include files should be in this order */
 #include "curl_memory.h"
@@ -562,7 +561,7 @@ CURLcode Curl_SOCKS5_gssapi_negotiate(struct Curl_cfilter *cf,
   }
   (void)curlx_nonblock(sock, TRUE);
 
-  infof(data, "SOCKS5 access with%s protection granted.",
+  infof(data, "SOCKS5 access with%s protection granted BUT NOT USED.",
         (socksreq[0] == 0) ? "out GSS-API data":
         ((socksreq[0] == 1) ? " GSS-API integrity" :
          " GSS-API confidentiality"));
@@ -590,9 +589,12 @@ error:
     Curl_pSecFn->FreeContextBuffer(sspi_send_token.pvBuffer);
   if(names.sUserName)
     Curl_pSecFn->FreeContextBuffer(names.sUserName);
-  free(sspi_w_token[0].pvBuffer);
-  free(sspi_w_token[1].pvBuffer);
-  free(sspi_w_token[2].pvBuffer);
+  if(sspi_w_token[0].pvBuffer)
+    Curl_pSecFn->FreeContextBuffer(sspi_w_token[0].pvBuffer);
+  if(sspi_w_token[1].pvBuffer)
+    Curl_pSecFn->FreeContextBuffer(sspi_w_token[1].pvBuffer);
+  if(sspi_w_token[2].pvBuffer)
+    Curl_pSecFn->FreeContextBuffer(sspi_w_token[2].pvBuffer);
   free(etbuf);
   return result;
 }

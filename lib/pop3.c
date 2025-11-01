@@ -323,8 +323,10 @@ static bool pop3_endofresp(struct Curl_easy *data, struct connectdata *conn,
 
   /* Are we processing CAPA command responses? */
   if(pop3c->state == POP3_CAPA) {
-    /* Do we have the terminating line? */
-    if(len >= 1 && line[0] == '.')
+    /* Do we have the terminating line? Per RFC 2449 this is a line
+       containing only a single dot */
+    if((len == 3 && line[0] == '.' && line[1] == '\r') ||
+       (len == 2 && line[0] == '.' && line[1] == '\n'))
       /* Treat the response as a success */
       *resp = '+';
     else
@@ -876,15 +878,15 @@ static CURLcode pop3_state_capa_resp(struct Curl_easy *data, int pop3code,
   /* Do we have an untagged continuation response? */
   if(pop3code == '*') {
     /* Does the server support the STLS capability? */
-    if(len >= 4 && !memcmp(line, "STLS", 4))
+    if(len >= 4 && curl_strnequal(line, "STLS", 4))
       pop3c->tls_supported = TRUE;
 
     /* Does the server support clear text authentication? */
-    else if(len >= 4 && !memcmp(line, "USER", 4))
+    else if(len >= 4 && curl_strnequal(line, "USER", 4))
       pop3c->authtypes |= POP3_TYPE_CLEARTEXT;
 
     /* Does the server support SASL based authentication? */
-    else if(len >= 5 && !memcmp(line, "SASL ", 5)) {
+    else if(len >= 5 && curl_strnequal(line, "SASL ", 5)) {
       pop3c->authtypes |= POP3_TYPE_SASL;
 
       /* Advance past the SASL keyword */
@@ -894,13 +896,10 @@ static CURLcode pop3_state_capa_resp(struct Curl_easy *data, int pop3code,
       /* Loop through the data line */
       for(;;) {
         size_t llen;
-        size_t wordlen;
+        size_t wordlen = 0;
         unsigned short mechbit;
 
-        while(len &&
-              (*line == ' ' || *line == '\t' ||
-               *line == '\r' || *line == '\n')) {
-
+        while(len && (ISBLANK(*line) || ISNEWLINE(*line))) {
           line++;
           len--;
         }
@@ -909,9 +908,8 @@ static CURLcode pop3_state_capa_resp(struct Curl_easy *data, int pop3code,
           break;
 
         /* Extract the word */
-        for(wordlen = 0; wordlen < len && line[wordlen] != ' ' &&
-              line[wordlen] != '\t' && line[wordlen] != '\r' &&
-              line[wordlen] != '\n';)
+        while(wordlen < len && !ISBLANK(line[wordlen]) &&
+              !ISNEWLINE(line[wordlen]))
           wordlen++;
 
         /* Test the word for a matching authentication mechanism */

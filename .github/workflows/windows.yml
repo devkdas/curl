@@ -57,8 +57,6 @@ jobs:
           - { build: 'cmake'    , platform: 'x86_64', tflags: ''       , config: '-DENABLE_DEBUG=ON -DCURL_USE_OPENSSL=ON -DENABLE_THREADED_RESOLVER=OFF', install: 'libssl-devel libssh2-devel', name: 'openssl' }
       fail-fast: false
     steps:
-      - run: git config --global core.autocrlf input
-        shell: pwsh
       - uses: cygwin/cygwin-install-action@f2009323764960f80959895c7bc3bb30210afe4d # v6
         with:
           platform: ${{ matrix.platform }}
@@ -220,9 +218,6 @@ jobs:
           - { build: 'cmake'    , sys: 'mingw32'   , env: 'i686'         , tflags: 'skiprun', config: '-DENABLE_DEBUG=OFF -DBUILD_SHARED_LIBS=ON  -DCURL_USE_SCHANNEL=ON -DENABLE_UNICODE=ON', install: 'mingw-w64-i686-libssh2', type: 'Release', name: 'schannel R' }
       fail-fast: false
     steps:
-      - run: git config --global core.autocrlf input
-        shell: pwsh
-
       - uses: msys2/setup-msys2@fb197b72ce45fb24f17bf3f807a388985654d1f2 # v2.29.0
         if: ${{ matrix.sys == 'msys' }}
         with:
@@ -243,7 +238,6 @@ jobs:
         if: ${{ matrix.sys != 'msys' }}
         with:
           msystem: ${{ matrix.sys }}
-          update: ${{ matrix.sys == 'clangarm64' }}  # delete this line on next msys2/setup-msys2 bump
           install: >-
             mingw-w64-${{ matrix.env }}-cc
             mingw-w64-${{ matrix.env }}-${{ matrix.build }} ${{ matrix.build == 'autotools' && 'make' || '' }}
@@ -370,7 +364,6 @@ jobs:
         run: |
           /usr/bin/pacman --noconfirm --noprogressbar --sync --needed openssh
           /c/ProgramData/chocolatey/choco.exe install --yes --no-progress --limit-output --timeout 180 --force stunnel || true
-          perl --version | tee "$GITHUB_WORKSPACE"/perlversion
 
       - name: 'run tests'
         if: ${{ matrix.tflags != 'skipall' && matrix.tflags != 'skiprun' }}
@@ -500,8 +493,6 @@ jobs:
           rm -r -f pack.bin
           ls -l
 
-      - run: git config --global core.autocrlf input
-
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           persist-credentials: false
@@ -567,7 +558,6 @@ jobs:
         run: |
           /c/ProgramData/chocolatey/choco.exe install --yes --no-progress --limit-output --timeout 180 --force stunnel || true
           python3 -m pip --disable-pip-version-check --no-input --no-cache-dir install --progress-bar off --prefer-binary -r tests/requirements.txt
-          perl --version | tee "$GITHUB_WORKSPACE"/perlversion
 
       - name: 'run tests'
         if: ${{ matrix.tflags != 'skipall' && matrix.tflags != 'skiprun' }}
@@ -944,7 +934,6 @@ jobs:
           if [ "${MATRIX_IMAGE}" != 'windows-11-arm' ]; then  # save 30-60 seconds, to counteract the slower test run step
             python3 -m pip --disable-pip-version-check --no-input --no-cache-dir install --progress-bar off --prefer-binary -r tests/requirements.txt
           fi
-          perl --version | tee "$GITHUB_WORKSPACE"/perlversion
 
       - name: 'run tests'
         if: ${{ matrix.tflags != 'skipall' && matrix.tflags != 'skiprun' }}

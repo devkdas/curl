@@ -331,6 +331,7 @@ static CURLproxycode socks4_resolving(struct socks_state *sx,
   if(sx->start_resolving) {
     /* need to resolve hostname to add destination address */
     sx->start_resolving = FALSE;
+    DEBUGASSERT(sx->hostname && *sx->hostname);
 
     result = Curl_resolv(data, sx->hostname, sx->remote_port,
                          cf->conn->ip_version, TRUE, &dns);
@@ -765,13 +766,12 @@ static CURLproxycode socks5_check_auth_resp(struct socks_state *sx,
 
   /* ignore the first (VER) byte */
   auth_status = resp[1];
-  Curl_bufq_skip(&sx->iobuf, 2);
-
   if(auth_status) {
     failf(data, "User was rejected by the SOCKS5 server (%d %d).",
           resp[0], resp[1]);
     return CURLPX_USER_REJECTED;
   }
+  Curl_bufq_skip(&sx->iobuf, 2);
   return CURLPX_OK;
 }
 
@@ -859,6 +859,7 @@ static CURLproxycode socks5_resolving(struct socks_state *sx,
   if(sx->start_resolving) {
     /* need to resolve hostname to add destination address */
     sx->start_resolving = FALSE;
+    DEBUGASSERT(sx->hostname && *sx->hostname);
 
     result = Curl_resolv(data, sx->hostname, sx->remote_port,
                          cf->conn->ip_version, TRUE, &dns);
@@ -1247,8 +1248,10 @@ static CURLcode socks_proxy_cf_connect(struct Curl_cfilter *cf,
 
   if(!sx) {
     cf->ctx = sx = calloc(1, sizeof(*sx));
-    if(!sx)
-      return CURLE_OUT_OF_MEMORY;
+    if(!sx) {
+      result = CURLE_OUT_OF_MEMORY;
+      goto out;
+    }
 
     /* for the secondary socket (FTP), use the "connect to host"
      * but ignore the "connect to port" (use the secondary port)

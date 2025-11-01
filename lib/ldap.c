@@ -399,8 +399,8 @@ static CURLcode ldap_do(struct Curl_easy *data, bool *done)
 #ifdef LDAP_OPT_X_TLS
     if(conn->ssl_config.verifypeer) {
       /* OpenLDAP SDK supports BASE64 files. */
-      if((data->set.ssl.cert_type) &&
-         (!curl_strequal(data->set.ssl.cert_type, "PEM"))) {
+      if(data->set.ssl.cert_type &&
+         !curl_strequal(data->set.ssl.cert_type, "PEM")) {
         failf(data, "LDAP local: ERROR OpenLDAP only supports PEM cert-type");
         result = CURLE_SSL_CERTPROBLEM;
         goto quit;
@@ -461,7 +461,7 @@ static CURLcode ldap_do(struct Curl_easy *data, bool *done)
     /* we should probably never come up to here since configure
        should check in first place if we can support LDAP SSL/TLS */
     failf(data, "LDAP local: SSL/TLS not supported with this version "
-          "of the OpenLDAP toolkit\n");
+          "of the OpenLDAP toolkit");
     result = CURLE_SSL_CERTPROBLEM;
     goto quit;
 #endif /* LDAP_OPT_X_TLS */
@@ -623,7 +623,7 @@ static CURLcode ldap_do(struct Curl_easy *data, bool *done)
           }
 
           if((attr_len > 7) &&
-             (strcmp(";binary", attr + (attr_len - 7)) == 0)) {
+             curl_strequal(";binary", attr + (attr_len - 7)) ) {
             /* Binary attribute, encode to base64. */
             if(vals[i]->bv_len) {
               result = curlx_base64_encode(vals[i]->bv_val, vals[i]->bv_len,
