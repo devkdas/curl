@@ -804,10 +804,13 @@ sub singletest_run {
     my ($testnum, $testtimings) = @_;
 
     # get the command line options to use
-    my ($cmd, @blaha)= getpart("client", "command");
-    if($cmd) {
-        # make some nice replace operations
+    my $cmd;
+    my @cmd = getpart("client", "command");
+    if(@cmd) {
+        # allow splitting the command-line to multiple lines
+        $cmd = join(' ', @cmd);
         $cmd =~ s/\n//g; # no newlines please
+        chomp $cmd; # no newlines please
         # substitute variables in the command line
     }
     else {
@@ -1149,12 +1152,9 @@ sub singletest_postcheck {
         }
     }
 
-    if($checktests) {
-        loadtest("${TESTDIR}/test${testnum}");  # load the raw original data
-        if(checktest()) {
-            logmsg " $testnum: postcheck FAILED: issue(s) found in test data\n";
-            return -1;
-        }
+    if($checktests && checktest("${TESTDIR}/test${testnum}")) {
+        logmsg " $testnum: postcheck FAILED: issue(s) found in test data\n";
+        return -1;
     }
 
     return 0;
@@ -1181,7 +1181,7 @@ sub runner_test_preprocess {
     # ignore any error here--if there were one, it would have been
     # caught during the selection phase and this test would not be
     # running now
-    loadtest("${TESTDIR}/test${testnum}");
+    loadtest("${TESTDIR}/test${testnum}", 1);
     readtestkeywords();
 
     ###################################################################

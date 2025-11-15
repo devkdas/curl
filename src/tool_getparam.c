@@ -1214,7 +1214,7 @@ static ParameterError parse_ech(struct OperationConfig *config,
         file = curlx_fopen(nextarg, FOPEN_READTEXT);
       }
       if(!file) {
-        warnf("Couldn't read file \"%s\" "
+        warnf("Could not read file \"%s\" "
               "specified for \"--ech ecl:\" option",
               nextarg);
         return PARAM_BAD_USE; /*  */
@@ -1401,7 +1401,7 @@ static ParameterError parse_range(struct OperationConfig *config,
   if(!curlx_str_number(&nextarg, &value, CURL_OFF_T_MAX) &&
      curlx_str_single(&nextarg, '-')) {
     /* Specifying a range WITHOUT A DASH will create an illegal HTTP range
-       (and will not actually be range by definition). The manpage previously
+       (and will not actually be range by definition). The man page previously
        claimed that to be a good way, why this code is added to work-around
        it. */
     char buffer[32];
@@ -1655,15 +1655,15 @@ static ParameterError parse_upload_flags(struct OperationConfig *config,
       }
     }
 
-   if(!map->name) {
-     err = PARAM_OPTION_UNKNOWN;
-     break;
-   }
+    if(!map->name) {
+      err = PARAM_OPTION_UNKNOWN;
+      break;
+    }
 
-   if(next)
-     /* move over the comma */
-     next++;
-   flag = next;
+    if(next)
+      /* move over the comma */
+      next++;
+    flag = next;
   }
 
   return err;
@@ -2095,7 +2095,7 @@ static ParameterError opt_bool(struct OperationConfig *config,
     config->doh_insecure_ok = toggle;
     break;
   case C_LIST_ONLY: /* --list-only */
-    config->dirlistonly = toggle; /* only list the names of the FTP dir */
+    config->dirlistonly = toggle; /* only list names of the FTP directory */
     break;
   case C_MANUAL: /* --manual */
     if(toggle)   /* --no-manual shows no manual... */
@@ -2887,7 +2887,7 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
     /* is there an '=' ? */
     if(!curlx_str_until(&p, &out, MAX_OPTION_LEN, '=') &&
        !curlx_str_single(&p, '=') ) {
-      /* there's an equal sign */
+      /* there is an equal sign */
       char tempword[MAX_OPTION_LEN + 1];
       memcpy(tempword, curlx_str(&out), curlx_strlen(&out));
       tempword[curlx_strlen(&out)] = 0;

@@ -1688,7 +1688,7 @@ static CURLcode client_cert(struct Curl_easy *data,
         failf(data,
               "could not load PEM client certificate from %s, " OSSL_PACKAGE
               " error %s, "
-              "(no key found, wrong pass phrase, or wrong file format?)",
+              "(no key found, wrong passphrase, or wrong file format?)",
               (cert_blob ? "CURLOPT_SSLCERT_BLOB" : cert_file),
               ossl_strerror(ERR_get_error(), error_buffer,
                             sizeof(error_buffer)) );
@@ -1708,7 +1708,7 @@ static CURLcode client_cert(struct Curl_easy *data,
         failf(data,
               "could not load ASN1 client certificate from %s, " OSSL_PACKAGE
               " error %s, "
-              "(no key found, wrong pass phrase, or wrong file format?)",
+              "(no key found, wrong passphrase, or wrong file format?)",
               (cert_blob ? "CURLOPT_SSLCERT_BLOB" : cert_file),
               ossl_strerror(ERR_get_error(), error_buffer,
                             sizeof(error_buffer)) );
@@ -2395,7 +2395,7 @@ static CURLcode ossl_verifyhost(struct Curl_easy *data,
 
         switch(target) {
         case GEN_DNS: /* name/pattern comparison */
-          /* The OpenSSL manpage explicitly says: "In general it cannot be
+          /* The OpenSSL man page explicitly says: "In general it cannot be
              assumed that the data returned by ASN1_STRING_data() is null
              terminated or does not contain embedded nulls." But also that
              "The actual format of the data will depend on the actual string
@@ -3573,7 +3573,7 @@ ossl_cached_x509_store_expired(const struct Curl_easy *data,
     return FALSE;
   else {
     struct curltime now = curlx_now();
-    timediff_t elapsed_ms = curlx_timediff(now, mb->time);
+    timediff_t elapsed_ms = curlx_timediff_ms(now, mb->time);
     timediff_t timeout_ms = cfg->ca_cache_timeout * (timediff_t)1000;
 
     return elapsed_ms >= timeout_ms;
@@ -4126,7 +4126,7 @@ CURLcode Curl_ossl_ctx_init(struct ossl_ctx *octx,
 
   /* OpenSSL contains code to work around lots of bugs and flaws in various
      SSL-implementations. SSL_CTX_set_options() is used to enabled those
-     work-arounds. The manpage for this option states that SSL_OP_ALL enables
+     work-arounds. The man page for this option states that SSL_OP_ALL enables
      all the work-arounds and that "It is usually safe to use SSL_OP_ALL to
      enable the bug workaround options if compatibility with somewhat broken
      implementations is desired."
@@ -5154,7 +5154,7 @@ CURLcode Curl_ossl_check_peer_cert(struct Curl_cfilter *cf,
 #endif
 
   if(data->set.ssl.certinfo && !octx->reused_session) {
-    /* asked to gather certificate info. Reused sessions don't have cert
+    /* asked to gather certificate info. Reused sessions do not have cert
        chains */
     result = ossl_certchain(data, octx->ssl);
     if(result)
@@ -5684,7 +5684,7 @@ static CURLcode ossl_get_channel_binding(struct Curl_easy *data, int sockindex,
 
   cert = SSL_get1_peer_certificate(octx->ssl);
   if(!cert)
-    /* No server certificate, don't do channel binding */
+    /* No server certificate, do not do channel binding */
     return CURLE_OK;
 
   if(!OBJ_find_sigid_algs(X509_get_signature_nid(cert), &algo_nid, NULL)) {

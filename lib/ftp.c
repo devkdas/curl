@@ -316,18 +316,6 @@ static void close_secondarysocket(struct Curl_easy *data,
   Curl_conn_cf_discard_all(data, data->conn, SECONDARYSOCKET);
 }
 
-/*
- * NOTE: back in the old days, we added code in the FTP code that made NOBODY
- * requests on files respond with headers passed to the client/stdout that
- * looked like HTTP ones.
- *
- * This approach is not elegant, it causes confusion and is error-prone. It is
- * subject for removal at the next (or at least a future) soname bump. Until
- * then you can test the effects of the removal by undefining the following
- * define named CURL_FTP_HTTPSTYLE_HEAD.
- */
-#define CURL_FTP_HTTPSTYLE_HEAD 1
-
 static void freedirs(struct ftp_conn *ftpc)
 {
   Curl_safefree(ftpc->dirs);
@@ -1879,7 +1867,7 @@ static CURLcode ftp_state_pasv_resp(struct Curl_easy *data,
     }
 
     if(!*str) {
-      failf(data, "Couldn't interpret the 227-response");
+      failf(data, "Could not interpret the 227-response");
       return CURLE_FTP_WEIRD_227_FORMAT;
     }
 
@@ -2114,7 +2102,6 @@ static CURLcode ftp_state_mdtm_resp(struct Curl_easy *data,
           showtime = TRUE;
       }
 
-#ifdef CURL_FTP_HTTPSTYLE_HEAD
       /* If we asked for a time of the file and we actually got one as well,
          we "emulate" an HTTP-style header in our output. */
 
@@ -2155,7 +2142,6 @@ static CURLcode ftp_state_mdtm_resp(struct Curl_easy *data,
         if(result)
           return result;
       } /* end of a ridiculous amount of conditionals */
-#endif
     }
     break;
   default:
@@ -2216,7 +2202,7 @@ static CURLcode ftp_state_type_resp(struct Curl_easy *data,
     /* "sasserftpd" and "(u)r(x)bot ftpd" both responds with 226 after a
        successful 'TYPE I'. While that is not as RFC959 says, it is still a
        positive response code and we allow that. */
-    failf(data, "Couldn't set desired mode");
+    failf(data, "Could not set desired mode");
     return CURLE_FTP_COULDNT_SET_TYPE;
   }
   if(ftpcode != 200)
@@ -2360,7 +2346,6 @@ static CURLcode ftp_state_size_resp(struct Curl_easy *data,
   }
 
   if(instate == FTP_SIZE) {
-#ifdef CURL_FTP_HTTPSTYLE_HEAD
     if(filesize != -1) {
       char clbuf[128];
       int clbuflen = curl_msnprintf(clbuf, sizeof(clbuf),
@@ -2370,7 +2355,6 @@ static CURLcode ftp_state_size_resp(struct Curl_easy *data,
       if(result)
         return result;
     }
-#endif
     Curl_pgrsSetDownloadSize(data, filesize);
     result = ftp_state_rest(data, ftpc, ftp);
   }
@@ -2397,20 +2381,18 @@ static CURLcode ftp_state_rest_resp(struct Curl_easy *data,
   switch(instate) {
   case FTP_REST:
   default:
-#ifdef CURL_FTP_HTTPSTYLE_HEAD
     if(ftpcode == 350) {
       char buffer[24]= { "Accept-ranges: bytes\r\n" };
       result = client_write_header(data, buffer, strlen(buffer));
       if(result)
         return result;
     }
-#endif
     result = ftp_state_prepare_transfer(data, ftpc, ftp);
     break;
 
   case FTP_RETR_REST:
     if(ftpcode != 350) {
-      failf(data, "Couldn't use REST");
+      failf(data, "Could not use REST");
       result = CURLE_FTP_COULDNT_USE_REST;
     }
     else {
@@ -2555,7 +2537,7 @@ static CURLcode ftp_state_get_resp(struct Curl_easy *data,
   }
   else {
     if((instate == FTP_LIST) && (ftpcode == 450)) {
-      /* simply no matching files in the dir listing */
+      /* simply no matching files in the directory listing */
       ftp->transfer = PPTRANSFER_NONE; /* do not download anything */
       ftp_state(data, ftpc, FTP_STOP); /* this phase is over */
     }
@@ -3070,7 +3052,7 @@ static CURLcode ftp_pp_statemachine(struct Curl_easy *data,
 
   case FTP_MKD:
     if((ftpcode/100 != 2) && !ftpc->count3--) {
-      /* failure to MKD the dir */
+      /* failure to MKD the directory */
       failf(data, "Failed to MKD dir: %03d", ftpcode);
       result = CURLE_REMOTE_ACCESS_DENIED;
     }
@@ -3324,7 +3306,7 @@ static CURLcode ftp_done(struct Curl_easy *data, CURLcode status,
       }
     }
     if(ftpc->prevpath)
-      infof(data, "Remembering we are in dir \"%s\"", ftpc->prevpath);
+      infof(data, "Remembering we are in directory \"%s\"", ftpc->prevpath);
   }
 
   /* shut down the socket to inform the server we are done */
@@ -4210,7 +4192,7 @@ CURLcode ftp_parse_url_path(struct Curl_easy *data,
 
         ftpc->dirs[0].start = 0;
         ftpc->dirs[0].len = (int)dirlen;
-        ftpc->dirdepth = 1; /* we consider it to be a single dir */
+        ftpc->dirdepth = 1; /* we consider it to be a single directory */
         fileName = slashPos + 1; /* rest is filename */
       }
       else
@@ -4226,7 +4208,7 @@ CURLcode ftp_parse_url_path(struct Curl_easy *data,
       size_t dirAlloc = numof_slashes(rawPath);
 
       if(dirAlloc >= FTP_MAX_DIR_DEPTH)
-        /* suspiciously deep dir hierarchy */
+        /* suspiciously deep directory hierarchy */
         return CURLE_URL_MALFORMAT;
 
       if(dirAlloc) {

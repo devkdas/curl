@@ -311,7 +311,7 @@ static CURLcode cf_h2_proxy_ctx_init(struct Curl_cfilter *cf,
 
   rc = nghttp2_session_callbacks_new(&cbs);
   if(rc) {
-    failf(data, "Couldn't initialize nghttp2 callbacks");
+    failf(data, "Could not initialize nghttp2 callbacks");
     goto out;
   }
 
@@ -331,7 +331,7 @@ static CURLcode cf_h2_proxy_ctx_init(struct Curl_cfilter *cf,
   /* The nghttp2 session is not yet setup, do it */
   rc = proxy_h2_client_new(cf, cbs);
   if(rc) {
-    failf(data, "Couldn't initialize nghttp2");
+    failf(data, "Could not initialize nghttp2");
     goto out;
   }
 
@@ -847,7 +847,7 @@ static int tunnel_recv_callback(nghttp2_session *session, uint8_t flags,
 #endif
   }
   /* tunnel.recbuf has soft limit, any success MUST add all data */
-  DEBUGASSERT((size_t)nwritten == len);
+  DEBUGASSERT(nwritten == len);
   return 0;
 }
 
@@ -1073,7 +1073,6 @@ static CURLcode cf_h2_proxy_connect(struct Curl_cfilter *cf,
   struct cf_h2_proxy_ctx *ctx = cf->ctx;
   CURLcode result = CURLE_OK;
   struct cf_call_data save;
-  timediff_t check;
   struct tunnel_stream *ts = &ctx->tunnel;
 
   if(cf->connected) {
@@ -1098,8 +1097,7 @@ static CURLcode cf_h2_proxy_connect(struct Curl_cfilter *cf,
   }
   DEBUGASSERT(ts->authority);
 
-  check = Curl_timeleft(data, NULL, TRUE);
-  if(check <= 0) {
+  if(Curl_timeleft_ms(data, NULL, TRUE) < 0) {
     failf(data, "Proxy CONNECT aborted due to timeout");
     result = CURLE_OPERATION_TIMEDOUT;
     goto out;

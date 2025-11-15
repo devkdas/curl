@@ -137,7 +137,7 @@ CURLcode Curl_blockread_all(struct Curl_cfilter *cf,
 
   *pnread = 0;
   for(;;) {
-    timediff_t timeout_ms = Curl_timeleft(data, NULL, TRUE);
+    timediff_t timeout_ms = Curl_timeleft_ms(data, NULL, TRUE);
     if(timeout_ms < 0) {
       /* we already got the timeout */
       return CURLE_OPERATION_TIMEDOUT;
@@ -308,7 +308,7 @@ static CURLproxycode socks4_req_add_user(struct socks_state *sx,
       return CURLPX_SEND_REQUEST;
   }
   else {
-    /* empty user name */
+    /* empty username */
     unsigned char b = 0;
     result = Curl_bufq_write(&sx->iobuf, &b, 1, &nwritten);
     if(result || (nwritten != 1))

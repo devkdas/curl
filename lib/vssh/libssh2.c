@@ -63,7 +63,7 @@
 #include "../select.h"
 #include "../curlx/fopen.h"
 #include "../curlx/warnless.h"
-#include "curl_path.h"
+#include "vssh.h"
 #include "../curlx/strparse.h"
 #include "../curlx/base64.h" /* for base64 encoding/decoding */
 
@@ -727,30 +727,20 @@ static CURLcode ssh_force_knownhost_key_type(struct Curl_easy *data,
 {
   CURLcode result = CURLE_OK;
 
-  static const char * const hostkey_method_ssh_ed25519
-    = "ssh-ed25519";
-  static const char * const hostkey_method_ssh_ecdsa_521
-    = "ecdsa-sha2-nistp521";
-  static const char * const hostkey_method_ssh_ecdsa_384
-    = "ecdsa-sha2-nistp384";
-  static const char * const hostkey_method_ssh_ecdsa_256
-    = "ecdsa-sha2-nistp256";
-  static const char * const hostkey_method_ssh_rsa_all
-    = "rsa-sha2-256,rsa-sha2-512,ssh-rsa";
-  static const char * const hostkey_method_ssh_dss
-    = "ssh-dss";
-
-  const char *hostkey_method = NULL;
-  struct connectdata *conn = data->conn;
-  struct libssh2_knownhost* store = NULL;
-  const char *kh_name_end = NULL;
-  size_t kh_name_size = 0;
-  int port = 0;
+  static const char hostkey_method_ssh_ed25519[] = "ssh-ed25519";
+  static const char hostkey_method_ssh_ecdsa_521[] = "ecdsa-sha2-nistp521";
+  static const char hostkey_method_ssh_ecdsa_384[] = "ecdsa-sha2-nistp384";
+  static const char hostkey_method_ssh_ecdsa_256[] = "ecdsa-sha2-nistp256";
+  static const char hostkey_method_ssh_rsa_all[] =
+    "rsa-sha2-256,rsa-sha2-512,ssh-rsa";
+  static const char hostkey_method_ssh_dss[] = "ssh-dss";
   bool found = FALSE;
 
   if(sshc->kh &&
      !data->set.str[STRING_SSH_HOST_PUBLIC_KEY_MD5] &&
      !data->set.str[STRING_SSH_HOST_PUBLIC_KEY_SHA256]) {
+    struct libssh2_knownhost *store = NULL;
+    struct connectdata *conn = data->conn;
     /* lets try to find our host in the known hosts file */
     while(!libssh2_knownhost_get(sshc->kh, &store, store)) {
       /* For non-standard ports, the name will be enclosed in */
@@ -758,17 +748,21 @@ static CURLcode ssh_force_knownhost_key_type(struct Curl_easy *data,
       if(store) {
         if(store->name) {
           if(store->name[0] == '[') {
-            kh_name_end = strstr(store->name, "]:");
+            curl_off_t port;
+            size_t kh_name_size = 0;
+            const char *p;
+            const char *kh_name_end = strstr(store->name, "]:");
             if(!kh_name_end) {
               infof(data, "Invalid host pattern %s in %s",
                     store->name, data->set.str[STRING_SSH_KNOWNHOSTS]);
               continue;
             }
-            port = atoi(kh_name_end + 2);
-            if(kh_name_end && (port == conn->remote_port)) {
+            p = kh_name_end + 2; /* start of port number */
+            if(!curlx_str_number(&p, &port, 0xffff) &&
+               (kh_name_end && (port == conn->remote_port))) {
               kh_name_size = strlen(store->name) - 1 - strlen(kh_name_end);
               if(strncmp(store->name + 1,
-                 conn->host.name, kh_name_size) == 0) {
+                         conn->host.name, kh_name_size) == 0) {
                 found = TRUE;
                 break;
               }
@@ -788,6 +782,7 @@ static CURLcode ssh_force_knownhost_key_type(struct Curl_easy *data,
 
     if(found) {
       int rc;
+      const char *hostkey_method = NULL;
       infof(data, "Found host %s in %s",
             conn->host.name, data->set.str[STRING_SSH_KNOWNHOSTS]);
 
@@ -883,8 +878,8 @@ static CURLcode sftp_quote(struct Curl_easy *data,
     Curl_debug(data, CURLINFO_HEADER_OUT, "PWD\n", 4);
     Curl_debug(data, CURLINFO_HEADER_IN, tmp, strlen(tmp));
 
-    /* this sends an FTP-like "header" to the header callback so that the
-       current directory can be read very similar to how it is read when
+    /* this sends an FTP-like "header" to the header callback so that
+       the current directory can be read similar to how it is read when
        using ordinary FTP. */
     result = Curl_client_write(data, CLIENTWRITE_HEADER, tmp, strlen(tmp));
     free(tmp);
@@ -962,7 +957,7 @@ static CURLcode sftp_quote(struct Curl_easy *data,
   else if(!strncmp(cmd, "mkdir ", 6)) {
     if(*cp)
       return_quote_error(data, sshc);
-    /* create dir */
+    /* create directory */
     myssh_state(data, sshc, SSH_SFTP_QUOTE_MKDIR);
     return result;
   }
@@ -985,7 +980,7 @@ static CURLcode sftp_quote(struct Curl_easy *data,
   else if(!strncmp(cmd, "rmdir ", 6)) {
     if(*cp)
       return_quote_error(data, sshc);
-    /* delete dir */
+    /* delete directory */
     myssh_state(data, sshc, SSH_SFTP_QUOTE_RMDIR);
     return result;
   }
@@ -1434,42 +1429,11 @@ sftp_download_stat(struct Curl_easy *data,
       return CURLE_BAD_DOWNLOAD_RESUME;
     }
     if(data->state.use_range) {
-      curl_off_t from, to;
-      const char *p = data->state.range;
-      int to_t, from_t;
-
-      from_t = curlx_str_number(&p, &from, CURL_OFF_T_MAX);
-      if(from_t == STRE_OVERFLOW)
-        return CURLE_RANGE_ERROR;
-      curlx_str_passblanks(&p);
-      (void)curlx_str_single(&p, '-');
-
-      to_t = curlx_str_numblanks(&p, &to);
-      if(to_t == STRE_OVERFLOW)
-        return CURLE_RANGE_ERROR;
-      if((to_t == STRE_NO_NUM) /* no "to" value given */
-         || (to >= size)) {
-        to = size - 1;
-      }
-      if(from_t) {
-        /* from is relative to end of file */
-        from = size - to;
-        to = size - 1;
-      }
-      if(from > size) {
-        failf(data, "Offset (%" FMT_OFF_T ") was beyond file size (%"
-              FMT_OFF_T ")", from, (curl_off_t)attrs.filesize);
-        return CURLE_BAD_DOWNLOAD_RESUME;
-      }
-      if(from > to) {
-        from = to;
-        size = 0;
-      }
-      else {
-        if((to - from) == CURL_OFF_T_MAX)
-          return CURLE_RANGE_ERROR;
-        size = to - from + 1;
-      }
+      curl_off_t from;
+      CURLcode result = Curl_ssh_range(data, data->state.range, size,
+                                       &from, &size);
+      if(result)
+        return result;
 
       libssh2_sftp_seek64(sshc->sftp_handle, (libssh2_uint64_t)from);
     }
@@ -2311,9 +2275,9 @@ static CURLcode ssh_state_sftp_create_dirs_mkdir(struct Curl_easy *data,
   ++sshc->slash_pos;
   if(rc < 0) {
     /*
-     * Abort if failure was not that the dir already exists or the
-     * permission was denied (creation might succeed further down the
-     * path) - retry on unspecific FAILURE also
+     * Abort if failure was not that the directory already exists or
+     * the permission was denied (creation might succeed further down
+     * the path) - retry on unspecific FAILURE also
      */
     unsigned long sftperr = libssh2_sftp_last_error(sshc->sftp_session);
     if((sftperr != LIBSSH2_FX_FILE_ALREADY_EXISTS) &&
@@ -3160,7 +3124,7 @@ static CURLcode ssh_block_statemach(struct Curl_easy *data,
 
   while((sshc->state != SSH_STOP) && !result) {
     bool block;
-    timediff_t left = 1000;
+    timediff_t left_ms = 1000;
     struct curltime now = curlx_now();
 
     result = ssh_statemachine(data, sshc, sshp, &block);
@@ -3175,13 +3139,13 @@ static CURLcode ssh_block_statemach(struct Curl_easy *data,
       if(result)
         break;
 
-      left = Curl_timeleft(data, NULL, FALSE);
-      if(left < 0) {
+      left_ms = Curl_timeleft_ms(data, NULL, FALSE);
+      if(left_ms < 0) {
         failf(data, "Operation timed out");
         return CURLE_OPERATION_TIMEDOUT;
       }
     }
-    else if(curlx_timediff(now, dis) > 1000) {
+    else if(curlx_timediff_ms(now, dis) > 1000) {
       /* disconnect timeout */
       failf(data, "Disconnect timed out");
       result = CURLE_OK;
@@ -3199,7 +3163,7 @@ static CURLcode ssh_block_statemach(struct Curl_easy *data,
         fd_write = sock;
       /* wait for the socket to become ready */
       (void)Curl_socket_check(fd_read, CURL_SOCKET_BAD, fd_write,
-                              left > 1000 ? 1000 : left);
+                              left_ms > 1000 ? 1000 : left_ms);
     }
   }
 
@@ -3564,7 +3528,7 @@ static CURLcode ssh_do(struct Curl_easy *data, bool *done)
     return CURLE_FAILED_INIT;
 
   data->req.size = -1; /* make sure this is unknown at this point */
-  sshc->secondCreateDirs = 0;   /* reset the create dir attempt state
+  sshc->secondCreateDirs = 0;   /* reset the create directory attempt state
                                    variable */
 
   Curl_pgrsSetUploadCounter(data, 0);

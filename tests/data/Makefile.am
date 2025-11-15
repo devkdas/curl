@@ -261,11 +261,11 @@ test2200 test2201 test2202 test2203 test2204 test2205 \
 test2300 test2301 test2302 test2303 test2304 test2306 test2307 test2308 \
 test2309 \
 \
-test2400 test2401 test2402 test2403 test2404 test2405 test2406 \
+test2400 test2401 test2402 test2403 test2404 test2405 test2406 test2407 \
 \
 test2500 test2501 test2502 test2503 \
 \
-test2600 test2601 test2602 test2603 test2604 \
+test2600 test2601 test2602 test2603 test2604 test2605 \
 \
 test2700 test2701 test2702 test2703 test2704 test2705 test2706 test2707 \
 test2708 test2709 test2710 test2711 test2712 test2713 test2714 test2715 \
@@ -283,4 +283,4 @@ test3200 test3201 test3202 test3203 test3204 test3205 test3206 test3207 test3208
 test3209 test3210 test3211 test3212 test3213 test3214 test3215 \
 test4000 test4001
 
-EXTRA_DIST = $(TESTCASES) DISABLED
+EXTRA_DIST = $(TESTCASES) DISABLED data-xml1

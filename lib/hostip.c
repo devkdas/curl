@@ -200,7 +200,7 @@ dnscache_entry_is_stale(void *datap, void *hc)
 
   if(dns->timestamp.tv_sec || dns->timestamp.tv_usec) {
     /* get age in milliseconds */
-    timediff_t age = curlx_timediff(prune->now, dns->timestamp);
+    timediff_t age = curlx_timediff_ms(prune->now, dns->timestamp);
     if(!dns->addr)
       age *= 2; /* negative entries age twice as fast */
     if(age >= prune->max_age_ms)
@@ -904,8 +904,10 @@ CURLcode Curl_resolv(struct Curl_easy *data,
 
 #ifndef USE_RESOLVE_ON_IPS
   /* allowed to convert, hostname is IP address, then NULL means error */
-  if(is_ipaddr)
+  if(is_ipaddr) {
+    keep_negative = FALSE;
     goto error;
+  }
 #endif
 
   /* Really need a resolver for hostname. */
@@ -954,7 +956,7 @@ out:
     /* we got a response, create a dns entry, add to cache, return */
     dns = Curl_dnscache_mk_entry(data, addr, hostname, 0, port, FALSE);
     if(!dns || Curl_dnscache_add(data, dns)) {
-      /* this is OOM or similar, don't store such negative resolves */
+      /* this is OOM or similar, do not store such negative resolves */
       keep_negative = FALSE;
       goto error;
     }
@@ -1175,8 +1177,8 @@ clean_up:
      the time we spent until now! */
   if(prev_alarm) {
     /* there was an alarm() set before us, now put it back */
-    timediff_t elapsed_secs = curlx_timediff(curlx_now(),
-                                            data->conn->created) / 1000;
+    timediff_t elapsed_secs = curlx_timediff_ms(curlx_now(),
+                                                data->conn->created) / 1000;
 
     /* the alarm period is counted in even number of seconds */
     unsigned long alarm_set = (unsigned long)(prev_alarm - elapsed_secs);
@@ -1391,7 +1393,7 @@ CURLcode Curl_loadhostpairs(struct Curl_easy *data)
       error = FALSE;
 err:
       if(error) {
-        failf(data, "Couldn't parse CURLOPT_RESOLVE entry '%s'",
+        failf(data, "Could not parse CURLOPT_RESOLVE entry '%s'",
               hostp->data);
         Curl_freeaddrinfo(head);
         return CURLE_SETOPT_OPTION_SYNTAX;

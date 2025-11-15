@@ -504,7 +504,7 @@ static CURLcode http_perhapsrewind(struct Curl_easy *data,
     return CURLE_OK;
 
   if(abort_upload) {
-    /* We'd like to abort the upload - but should we? */
+    /* We would like to abort the upload - but should we? */
 #ifdef USE_NTLM
     if((data->state.authproxy.picked == CURLAUTH_NTLM) ||
        (data->state.authhost.picked == CURLAUTH_NTLM)) {
@@ -1302,7 +1302,6 @@ CURLcode Curl_http_follow(struct Curl_easy *data, const char *newurl,
     /* Clear auth if this redirects to a different port number or protocol,
        unless permitted */
     if(!data->set.allow_auth_to_other_hosts && (type != FOLLOW_FAKE)) {
-      char *portnum;
       int port;
       bool clear = FALSE;
 
@@ -1310,13 +1309,18 @@ CURLcode Curl_http_follow(struct Curl_easy *data, const char *newurl,
         /* a custom port is used */
         port = (int)data->set.use_port;
       else {
+        curl_off_t value;
+        char *portnum;
+        const char *p;
         uc = curl_url_get(data->state.uh, CURLUPART_PORT, &portnum,
                           CURLU_DEFAULT_PORT);
         if(uc) {
           free(follow_url);
           return Curl_uc_to_curlcode(uc);
         }
-        port = atoi(portnum);
+        p = portnum;
+        curlx_str_number(&p, &value, 0xffff);
+        port = (int)value;
         free(portnum);
       }
       if(port != data->info.conn_remote_port) {
@@ -1712,7 +1716,7 @@ CURLcode Curl_add_custom_headers(struct Curl_easy *data,
           curlx_str_untilnl(&p, &val, MAX_HTTP_RESP_HEADER_SIZE);
           curlx_str_trimblanks(&val);
           if(!curlx_strlen(&val))
-            /* no content, don't send this */
+            /* no content, do not send this */
             continue;
         }
         else
@@ -2218,9 +2222,11 @@ static CURLcode set_reader(struct Curl_easy *data, Curl_HttpReq httpreq)
       result = Curl_creader_set_null(data);
     }
     else if(data->set.postfields) {
-      if(postsize > 0)
-        result = Curl_creader_set_buf(data, data->set.postfields,
-                                      (size_t)postsize);
+      size_t plen = curlx_sotouz_range(postsize, 0, SIZE_MAX);
+      if(plen == SIZE_MAX)
+        return CURLE_OUT_OF_MEMORY;
+      else if(plen)
+        result = Curl_creader_set_buf(data, data->set.postfields, plen);
       else
         result = Curl_creader_set_null(data);
     }
@@ -2398,7 +2404,7 @@ static CURLcode http_add_content_hds(struct Curl_easy *data,
        (data->req.authneg ||
         !Curl_checkheaders(data, STRCONST("Content-Length")))) {
       /* we allow replacing this header if not during auth negotiation,
-         although it is not very wise to actually set your own */
+         although it is not wise to actually set your own */
       result = curlx_dyn_addf(r, "Content-Length: %" FMT_OFF_T "\r\n",
                               req_clen);
     }
@@ -2459,10 +2465,12 @@ static CURLcode http_cookies(struct Curl_easy *data,
     int count = 0;
 
     if(data->cookies && data->state.cookie_engine) {
+      bool okay;
       const char *host = data->state.aptr.cookiehost ?
         data->state.aptr.cookiehost : data->conn->host.name;
       Curl_share_lock(data, CURL_LOCK_DATA_COOKIE, CURL_LOCK_ACCESS_SINGLE);
-      if(!Curl_cookie_getlist(data, data->conn, host, &list)) {
+      result = Curl_cookie_getlist(data, data->conn, &okay, host, &list);
+      if(!result && okay) {
         struct Curl_llist_node *n;
         size_t clen = 8; /* hold the size of the generated Cookie: header */
 
@@ -3467,11 +3475,12 @@ static CURLcode http_header_s(struct Curl_easy *data,
     const char *host = data->state.aptr.cookiehost ?
       data->state.aptr.cookiehost : conn->host.name;
     const bool secure_context = Curl_secure_context(conn, host);
+    CURLcode result;
     Curl_share_lock(data, CURL_LOCK_DATA_COOKIE, CURL_LOCK_ACCESS_SINGLE);
-    Curl_cookie_add(data, data->cookies, TRUE, FALSE, v, host,
-                    data->state.up.path, secure_context);
+    result = Curl_cookie_add(data, data->cookies, TRUE, FALSE, v, host,
+                             data->state.up.path, secure_context);
     Curl_share_unlock(data, CURL_LOCK_DATA_COOKIE);
-    return CURLE_OK;
+    return result;
   }
 #endif
 #ifndef CURL_DISABLE_HSTS
@@ -4009,7 +4018,7 @@ static CURLcode http_on_response(struct Curl_easy *data,
        *
        * The check for close above is done simply because of something
        * else has already deemed the connection to get closed then
-       * something else should've considered the big picture and we
+       * something else should have considered the big picture and we
        * avoid this check.
        *
        */
@@ -4178,7 +4187,7 @@ static CURLcode http_rw_hd(struct Curl_easy *data,
                 k->httpcode = (p[0] - '0') * 100 + (p[1] - '0') * 10 +
                   (p[2] - '0');
                 /* RFC 9112 requires a single space following the status code,
-                   but the browsers don't so let's not insist */
+                   but the browsers do not so let's not insist */
                 fine_statusline = TRUE;
               }
             }
@@ -4938,7 +4947,7 @@ static CURLcode cr_exp100_read(struct Curl_easy *data,
     *eos = FALSE;
     return CURLE_READ_ERROR;
   case EXP100_AWAITING_CONTINUE:
-    ms = curlx_timediff(curlx_now(), ctx->start);
+    ms = curlx_timediff_ms(curlx_now(), ctx->start);
     if(ms < data->set.expect_100_timeout) {
       DEBUGF(infof(data, "cr_exp100_read, AWAITING_CONTINUE, not expired"));
       data->req.keepon &= ~KEEP_SEND;

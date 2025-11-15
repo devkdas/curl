@@ -342,7 +342,7 @@ static CURLcode write_resp_raw(struct Curl_cfilter *cf,
 
   if(nwritten < memlen) {
     /* This MUST not happen. Our recbuf is dimensioned to hold the
-     * full max_stream_window and then some for this very reason. */
+     * full max_stream_window and then some for this reason. */
     DEBUGASSERT(0);
     return CURLE_RECV_ERROR;
   }
@@ -1415,8 +1415,8 @@ static CURLcode cf_quiche_connect(struct Curl_cfilter *cf,
 
   if(quiche_conn_is_established(ctx->qconn)) {
     ctx->handshake_at = ctx->q.last_op;
-    CURL_TRC_CF(data, cf, "handshake complete after %dms",
-                (int)curlx_timediff(ctx->handshake_at, ctx->started_at));
+    CURL_TRC_CF(data, cf, "handshake complete after %" FMT_TIMEDIFF_T "ms",
+                curlx_timediff_ms(ctx->handshake_at, ctx->started_at));
     result = cf_quiche_verify_peer(cf, data);
     if(!result) {
       CURL_TRC_CF(data, cf, "peer verified");
@@ -1547,7 +1547,7 @@ static CURLcode cf_quiche_query(struct Curl_cfilter *cf,
   }
   case CF_QUERY_CONNECT_REPLY_MS:
     if(ctx->q.got_first_byte) {
-      timediff_t ms = curlx_timediff(ctx->q.first_byte_at, ctx->started_at);
+      timediff_t ms = curlx_timediff_ms(ctx->q.first_byte_at, ctx->started_at);
       *pres1 = (ms < INT_MAX) ? (int)ms : INT_MAX;
     }
     else

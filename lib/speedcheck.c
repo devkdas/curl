@@ -49,11 +49,11 @@ CURLcode Curl_speedcheck(struct Curl_easy *data,
   if((data->progress.current_speed >= 0) && data->set.low_speed_time) {
     if(data->progress.current_speed < data->set.low_speed_limit) {
       if(!data->state.keeps_speed.tv_sec)
-        /* under the limit at this very moment */
+        /* under the limit at this moment */
         data->state.keeps_speed = now;
       else {
         /* how long has it been under the limit */
-        timediff_t howlong = curlx_timediff(now, data->state.keeps_speed);
+        timediff_t howlong = curlx_timediff_ms(now, data->state.keeps_speed);
 
         if(howlong >= data->set.low_speed_time * 1000) {
           /* too long */

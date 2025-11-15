@@ -64,7 +64,7 @@
 #include "../multiif.h"
 #include "../select.h"
 #include "../curlx/warnless.h"
-#include "curl_path.h"
+#include "vssh.h"
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -1329,44 +1329,11 @@ static int myssh_in_SFTP_DOWNLOAD_STAT(struct Curl_easy *data,
       return myssh_to_ERROR(data, sshc, CURLE_BAD_DOWNLOAD_RESUME);
     }
     if(data->state.use_range) {
-      curl_off_t from, to;
-      const char *p = data->state.range;
-      int from_t, to_t;
-
-      from_t = curlx_str_number(&p, &from, CURL_OFF_T_MAX);
-      if(from_t == STRE_OVERFLOW)
-        return myssh_to_ERROR(data, sshc, CURLE_RANGE_ERROR);
-
-      curlx_str_passblanks(&p);
-      (void)curlx_str_single(&p, '-');
-
-      to_t = curlx_str_numblanks(&p, &to);
-      if(to_t == STRE_OVERFLOW)
-        return myssh_to_ERROR(data, sshc, CURLE_RANGE_ERROR);
-
-      if((to_t == STRE_NO_NUM) || (to >= size)) {
-        to = size - 1;
-      }
-
-      if(from_t == STRE_NO_NUM) {
-        /* from is relative to end of file */
-        from = size - to;
-        to = size - 1;
-      }
-      if(from > size) {
-        failf(data, "Offset (%" FMT_OFF_T ") was beyond file size (%"
-              FMT_OFF_T ")", from, size);
-        return myssh_to_ERROR(data, sshc, CURLE_BAD_DOWNLOAD_RESUME);
-      }
-      if(from > to) {
-        from = to;
-        size = 0;
-      }
-      else {
-        if((to - from) == CURL_OFF_T_MAX)
-          return myssh_to_ERROR(data, sshc, CURLE_RANGE_ERROR);
-        size = to - from + 1;
-      }
+      curl_off_t from;
+      CURLcode result = Curl_ssh_range(data, data->state.range, size,
+                                       &from, &size);
+      if(result)
+        return myssh_to_ERROR(data, sshc, result);
 
       rc = sftp_seek64(sshc->sftp_file, from);
       if(rc)
@@ -1607,8 +1574,8 @@ static int myssh_in_SFTP_QUOTE(struct Curl_easy *data,
     Curl_debug(data, CURLINFO_HEADER_OUT, "PWD\n", 4);
     Curl_debug(data, CURLINFO_HEADER_IN, tmp, strlen(tmp));
 
-    /* this sends an FTP-like "header" to the header callback so that the
-       current directory can be read very similar to how it is read when
+    /* this sends an FTP-like "header" to the header callback so that
+       the current directory can be read similar to how it is read when
        using ordinary FTP. */
     result = Curl_client_write(data, CLIENTWRITE_HEADER, tmp, strlen(tmp));
     free(tmp);
@@ -1710,7 +1677,7 @@ static int myssh_in_SFTP_QUOTE(struct Curl_easy *data,
   else if(!strncmp(cmd, "mkdir ", 6)) {
     if(*cp)
       return return_quote_error(data, sshc);
-    /* create dir */
+    /* create directory */
     myssh_to(data, sshc, SSH_SFTP_QUOTE_MKDIR);
     return SSH_NO_ERROR;
   }
@@ -1736,7 +1703,7 @@ static int myssh_in_SFTP_QUOTE(struct Curl_easy *data,
     return SSH_NO_ERROR;
   }
   else if(!strncmp(cmd, "rmdir ", 6)) {
-    /* delete dir */
+    /* delete directory */
     if(*cp)
       return return_quote_error(data, sshc);
     myssh_to(data, sshc, SSH_SFTP_QUOTE_RMDIR);
@@ -1893,7 +1860,7 @@ static int myssh_in_SFTP_QUOTE_STAT(struct Curl_easy *data,
       return SSH_NO_ERROR;
     }
     if(date > UINT_MAX)
-      /* because the liubssh API can't deal with a larger value */
+      /* because the liubssh API cannot deal with a larger value */
       date = UINT_MAX;
     if(!strncmp(cmd, "atime", 5))
       sshc->quote_attrs->atime = (uint32_t)date;
@@ -2190,9 +2157,9 @@ static CURLcode myssh_statemach_act(struct Curl_easy *data,
       ++sshc->slash_pos;
       if(rc < 0) {
         /*
-         * Abort if failure was not that the dir already exists or the
-         * permission was denied (creation might succeed further down the
-         * path) - retry on unspecific FAILURE also
+         * Abort if failure was not that the directory already exists or
+         * the permission was denied (creation might succeed further down
+         * the path) - retry on unspecific FAILURE also
          */
         err = sftp_get_error(sshc->sftp_session);
         if((err != SSH_FX_FILE_ALREADY_EXISTS) &&
@@ -2514,7 +2481,7 @@ static CURLcode myssh_block_statemach(struct Curl_easy *data,
 
   while((sshc->state != SSH_STOP) && !result) {
     bool block;
-    timediff_t left = 1000;
+    timediff_t left_ms = 1000;
     struct curltime now = curlx_now();
 
     result = myssh_statemach_act(data, sshc, sshp, &block);
@@ -2529,8 +2496,8 @@ static CURLcode myssh_block_statemach(struct Curl_easy *data,
       if(result)
         break;
 
-      left = Curl_timeleft(data, NULL, FALSE);
-      if(left < 0) {
+      left_ms = Curl_timeleft_ms(data, NULL, FALSE);
+      if(left_ms < 0) {
         failf(data, "Operation timed out");
         return CURLE_OPERATION_TIMEDOUT;
       }
@@ -2539,8 +2506,8 @@ static CURLcode myssh_block_statemach(struct Curl_easy *data,
     if(block) {
       curl_socket_t fd_read = conn->sock[FIRSTSOCKET];
       /* wait for the socket to become ready */
-      (void)Curl_socket_check(fd_read, CURL_SOCKET_BAD,
-                              CURL_SOCKET_BAD, left > 1000 ? 1000 : left);
+      (void)Curl_socket_check(fd_read, CURL_SOCKET_BAD, CURL_SOCKET_BAD,
+                              left_ms > 1000 ? 1000 : left_ms);
     }
 
   }
@@ -2777,7 +2744,7 @@ static CURLcode myssh_do_it(struct Curl_easy *data, bool *done)
   data->req.size = -1;          /* make sure this is unknown at this point */
 
   sshc->actualcode = CURLE_OK;  /* reset error code */
-  sshc->secondCreateDirs = 0;   /* reset the create dir attempt state
+  sshc->secondCreateDirs = 0;   /* reset the create directory attempt state
                                    variable */
 
   Curl_pgrsSetUploadCounter(data, 0);

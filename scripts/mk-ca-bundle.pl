@@ -60,7 +60,7 @@ $opt_d = 'release';
 # If the OpenSSL commandline is not in search path you can configure it here!
 my $openssl = 'openssl';
 
-my $version = '1.29';
+my $version = '1.30';
 
 $opt_w = 76; # default base64 encoded lines length
 
@@ -100,7 +100,7 @@ my @valid_mozilla_trust_levels = (
                             # for delegates (i.e. it is not a CA).
 );
 
-my $default_signature_algorithms = $opt_s = "MD5";
+my $default_signature_algorithms = $opt_s = "SHA256";
 
 my @valid_signature_algorithms = (
     "MD5",
@@ -247,7 +247,9 @@ sub sha256 {
         close(FILE);
     } else {
         # Use OpenSSL command if Perl Digest::SHA modules not available
-        $result = `"$openssl" dgst -r -sha256 "$_[0]"`;
+        open(my $fh, '-|', $openssl, 'dgst', '-r', '-sha256', $_[0]) or die "Failed running openssl on '$_[0]': $!";
+        $result = <$fh>;  # read first line
+        close $fh;
         $result =~ s/^([0-9a-f]{64}) .+/$1/is;
     }
     return $result;
@@ -311,10 +313,16 @@ if(!$opt_n) {
         if($curl) {
             if($curl =~ /^Protocols:.* https( |$)/m) {
                 report "Get certdata with curl!";
-                my $proto = !$opt_k ? "--proto =https" : "";
-                my $quiet = $opt_q ? "-s" : "";
-                my @out = `curl -Lw %{response_code} $proto $quiet -o "$txt" "$url"`;
-                if(!$? && @out && $out[0] == 200) {
+                my @opts = ();
+                push @opts, '--proto', '=https' if !$opt_k;
+                push @opts, '-s' if $opt_q;
+                my $out = '';
+                if(open(my $fh, '-|', 'curl', '-Lw', '%{response_code}', (@opts), '-o', $txt, $url)) {
+                    $out = <$fh>;  # read first line
+                    chomp $out;
+                    close $fh;
+                }
+                if($out && $out == 200) {
                     $fetched = 1;
                     report "Downloaded $txt";
                 }

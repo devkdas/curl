@@ -67,33 +67,27 @@ static void time2str(char *r, curl_off_t seconds)
    Add suffix k, M, G when suitable... */
 static char *max6data(curl_off_t bytes, char *max6)
 {
-  /* a signed 64-bit value is 8192 petabytes maximum */
-  const char unit[] = { 'k', 'M', 'G', 'T', 'P', 0 };
-  int k = 0;
-  if(bytes < 1000000) {
-    curl_msnprintf(max6, 7, "%5" CURL_FORMAT_CURL_OFF_T, bytes);
-    return max6;
+  /* a signed 64-bit value is 8192 petabytes maximum, shown as
+     8.0E (exabytes)*/
+  if(bytes < 100000)
+    curl_msnprintf(max6, 7, "%6" CURL_FORMAT_CURL_OFF_T, bytes);
+  else {
+    const char unit[] = { 'k', 'M', 'G', 'T', 'P', 'E', 0 };
+    int k = 0;
+    curl_off_t nbytes;
+    do {
+      nbytes = bytes / 1024;
+      if(nbytes < 1000)
+        break;
+      bytes = nbytes;
+      k++;
+      DEBUGASSERT(unit[k]);
+    } while(unit[k]);
+    /* xxx.yU */
+    curl_msnprintf(max6, 7, "%3" CURL_FORMAT_CURL_OFF_T
+                   ".%" CURL_FORMAT_CURL_OFF_T "%c", nbytes,
+                   (bytes%1024) / (1024/10), unit[k]);
   }
-
-  do {
-    curl_off_t nbytes = bytes / 1024;
-    if(nbytes < 1000) {
-      /* xxx.yU */
-      curl_msnprintf(max6, 7, "%3" CURL_FORMAT_CURL_OFF_T
-                     ".%" CURL_FORMAT_CURL_OFF_T "%c", nbytes,
-                     (bytes%1024) / (1024/10), unit[k]);
-      break;
-    }
-    else if(nbytes < 100000) {
-      /* xxxxxU */
-      curl_msnprintf(max6, 7, "%5" CURL_FORMAT_CURL_OFF_T "%c",
-                     nbytes, unit[k]);
-      break;
-    }
-    bytes = nbytes;
-    k++;
-    DEBUGASSERT(unit[k]);
-  } while(unit[k]);
   return max6;
 }
 #endif
@@ -277,7 +271,7 @@ timediff_t Curl_pgrsLimitWaitTime(struct pgrs_dir *d,
     return 0;
 
   /* The time it took us to have `bytes` */
-  took_ms = curlx_timediff_ceil(now, d->limit.start);
+  took_ms = curlx_timediff_ceil_ms(now, d->limit.start);
 
   /* The time it *should* have taken us to have `bytes`
    * when obeying the bytes_per_sec speed_limit. */
@@ -286,7 +280,7 @@ timediff_t Curl_pgrsLimitWaitTime(struct pgrs_dir *d,
     should_ms = (timediff_t) (1000 * bytes / bytes_per_sec);
   }
   else {
-    /* very large `bytes`, first calc the seconds it should have taken.
+    /* large `bytes`, first calc the seconds it should have taken.
      * if that is small enough, convert to milliseconds. */
     should_ms = (timediff_t) (bytes / bytes_per_sec);
     if(should_ms < TIMEDIFF_T_MAX/1000)
@@ -317,14 +311,14 @@ void Curl_ratelimit(struct Curl_easy *data, struct curltime now)
 {
   /* do not set a new stamp unless the time since last update is long enough */
   if(data->set.max_recv_speed) {
-    if(curlx_timediff(now, data->progress.dl.limit.start) >=
+    if(curlx_timediff_ms(now, data->progress.dl.limit.start) >=
        MIN_RATE_LIMIT_PERIOD) {
       data->progress.dl.limit.start = now;
       data->progress.dl.limit.start_size = data->progress.dl.cur_size;
     }
   }
   if(data->set.max_send_speed) {
-    if(curlx_timediff(now, data->progress.ul.limit.start) >=
+    if(curlx_timediff_ms(now, data->progress.ul.limit.start) >=
        MIN_RATE_LIMIT_PERIOD) {
       data->progress.ul.limit.start = now;
       data->progress.ul.limit.start_size = data->progress.ul.cur_size;
@@ -430,7 +424,7 @@ static bool progress_calc(struct Curl_easy *data, struct curltime now)
       checkindex = (p->speeder_c >= CURR_TIME) ? p->speeder_c%CURR_TIME : 0;
 
       /* Figure out the exact time for the time span */
-      span_ms = curlx_timediff(now, p->speeder_time[checkindex]);
+      span_ms = curlx_timediff_ms(now, p->speeder_time[checkindex]);
       if(span_ms == 0)
         span_ms = 1; /* at least one millisecond MUST have passed */
 

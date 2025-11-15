@@ -613,8 +613,10 @@ static CURLcode mqtt_publish(struct Curl_easy *data)
 
   remaininglength = payloadlen + 2 + topiclen;
   encodelen = mqtt_encode_len(encodedbytes, remaininglength);
-  if(MAX_MQTT_MESSAGE_SIZE - remaininglength - 1 < encodelen)
-    return CURLE_TOO_LARGE;
+  if(MAX_MQTT_MESSAGE_SIZE - remaininglength - 1 < encodelen) {
+    result = CURLE_TOO_LARGE;
+    goto fail;
+  }
 
   /* add the control byte and the encoded remaining length */
   pkt = malloc(remaininglength + 1 + encodelen);
@@ -845,7 +847,7 @@ static CURLcode mqtt_ping(struct Curl_easy *data)
      !mq->pingsent &&
      data->set.upkeep_interval_ms > 0) {
     struct curltime t = curlx_now();
-    timediff_t diff = curlx_timediff(t, mq->lastTime);
+    timediff_t diff = curlx_timediff_ms(t, mq->lastTime);
 
     if(diff > data->set.upkeep_interval_ms) {
       /* 0xC0 is PINGREQ, and 0x00 is remaining length */

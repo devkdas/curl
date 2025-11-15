@@ -781,7 +781,7 @@ static CURLcode write_resp_raw(struct Curl_cfilter *cf,
 
   if(nwritten < memlen) {
     /* This MUST not happen. Our recbuf is dimensioned to hold the
-     * full max_stream_window and then some for this very reason. */
+     * full max_stream_window and then some for this reason. */
     DEBUGASSERT(0);
     return CURLE_RECV_ERROR;
   }
@@ -1828,8 +1828,8 @@ static CURLcode cf_osslq_connect(struct Curl_cfilter *cf,
     /* connected */
     ctx->handshake_at = now;
     ctx->q.last_io = now;
-    CURL_TRC_CF(data, cf, "handshake complete after %dms",
-               (int)curlx_timediff(now, ctx->started_at));
+    CURL_TRC_CF(data, cf, "handshake complete after %" FMT_TIMEDIFF_T "ms",
+                curlx_timediff_ms(now, ctx->started_at));
     result = cf_osslq_verify_peer(cf, data);
     if(!result) {
       CURL_TRC_CF(data, cf, "peer verified");
@@ -2270,7 +2270,7 @@ static bool cf_osslq_conn_is_alive(struct Curl_cfilter *cf,
     }
     CURL_TRC_CF(data, cf, "negotiated idle timeout: %" FMT_PRIu64 "ms",
                 (curl_uint64_t)idle_ms);
-    idletime = curlx_timediff(curlx_now(), ctx->q.last_io);
+    idletime = curlx_timediff_ms(curlx_now(), ctx->q.last_io);
     if(idle_ms && idletime > 0 && (uint64_t)idletime > idle_ms)
       goto out;
   }
@@ -2360,7 +2360,7 @@ static CURLcode cf_osslq_query(struct Curl_cfilter *cf,
   }
   case CF_QUERY_CONNECT_REPLY_MS:
     if(ctx->got_first_byte) {
-      timediff_t ms = curlx_timediff(ctx->first_byte_at, ctx->started_at);
+      timediff_t ms = curlx_timediff_ms(ctx->first_byte_at, ctx->started_at);
       *pres1 = (ms < INT_MAX) ? (int)ms : INT_MAX;
     }
     else

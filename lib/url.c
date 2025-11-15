@@ -655,7 +655,7 @@ static bool conn_maxage(struct Curl_easy *data,
   timediff_t age_ms;
 
   if(data->set.conn_max_idle_ms) {
-    age_ms = curlx_timediff(now, conn->lastused);
+    age_ms = curlx_timediff_ms(now, conn->lastused);
     if(age_ms > data->set.conn_max_idle_ms) {
       infof(data, "Too old connection (%" FMT_TIMEDIFF_T
             " ms idle, max idle is %" FMT_TIMEDIFF_T " ms), disconnect it",
@@ -665,7 +665,7 @@ static bool conn_maxage(struct Curl_easy *data,
   }
 
   if(data->set.conn_max_age_ms) {
-    age_ms = curlx_timediff(now, conn->created);
+    age_ms = curlx_timediff_ms(now, conn->created);
     if(age_ms > data->set.conn_max_age_ms) {
       infof(data,
             "Too old connection (created %" FMT_TIMEDIFF_T
@@ -750,7 +750,7 @@ CURLcode Curl_conn_upkeep(struct Curl_easy *data,
                           struct curltime *now)
 {
   CURLcode result = CURLE_OK;
-  if(curlx_timediff(*now, conn->keepalive) <= data->set.upkeep_interval_ms)
+  if(curlx_timediff_ms(*now, conn->keepalive) <= data->set.upkeep_interval_ms)
     return result;
 
   /* briefly attach for action */
@@ -1283,7 +1283,7 @@ static bool url_match_result(bool result, void *userdata)
     return TRUE;
   }
   else if(match->seen_single_use_conn && !match->seen_multiplex_conn) {
-    /* We've seen a single-use, existing connection to the destination and
+    /* We have seen a single-use, existing connection to the destination and
      * no multiplexed one. It seems safe to assume that the server does
      * not support multiplexing. */
     match->wait_pipe = FALSE;
@@ -2740,7 +2740,7 @@ static CURLcode override_login(struct Curl_easy *data,
                                       data->set.str[STRING_NETRC_FILE]);
       if(ret && ((ret == NETRC_NO_MATCH) ||
                  (data->set.use_netrc == CURL_NETRC_OPTIONAL))) {
-        infof(data, "Couldn't find host %s in the %s file; using defaults",
+        infof(data, "Could not find host %s in the %s file; using defaults",
               conn->host.name,
               (data->set.str[STRING_NETRC_FILE] ?
                data->set.str[STRING_NETRC_FILE] : ".netrc"));
@@ -2752,7 +2752,7 @@ static CURLcode override_login(struct Curl_easy *data,
       }
       else {
         if(!(conn->handler->flags&PROTOPT_USERPWDCTRL)) {
-          /* if the protocol can't handle control codes in credentials, make
+          /* if the protocol cannot handle control codes in credentials, make
              sure there are none */
           if(str_has_ctrl(*userp) || str_has_ctrl(*passwdp)) {
             failf(data, "control code detected in .netrc credentials");
@@ -3217,7 +3217,7 @@ static CURLcode resolve_server(struct Curl_easy *data,
 {
   struct hostname *ehost;
   int eport;
-  timediff_t timeout_ms = Curl_timeleft(data, NULL, TRUE);
+  timediff_t timeout_ms = Curl_timeleft_ms(data, NULL, TRUE);
   const char *peertype = "host";
   CURLcode result;
 
@@ -3275,7 +3275,7 @@ static CURLcode resolve_server(struct Curl_easy *data,
   else if(result == CURLE_OPERATION_TIMEDOUT) {
     failf(data, "Failed to resolve %s '%s' with timeout after %"
           FMT_TIMEDIFF_T " ms", peertype, ehost->dispname,
-          curlx_timediff(curlx_now(), data->progress.t_startsingle));
+          curlx_timediff_ms(curlx_now(), data->progress.t_startsingle));
     return CURLE_OPERATION_TIMEDOUT;
   }
   else if(result) {
