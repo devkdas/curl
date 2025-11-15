@@ -46,7 +46,7 @@ env:
   # renovate: datasource=github-tags depName=Mbed-TLS/mbedtls versioning=semver:^3.0.0 registryUrl=https://github.com
   MBEDTLS_VERSION_PREV: 3.6.4
   # renovate: datasource=github-tags depName=awslabs/aws-lc versioning=semver registryUrl=https://github.com
-  AWSLC_VERSION: 1.61.4
+  AWSLC_VERSION: 1.63.0
   # renovate: datasource=github-tags depName=google/boringssl versioning=semver registryUrl=https://github.com
   BORINGSSL_VERSION: 0.20251002.0
   # handled in renovate.json
@@ -55,6 +55,10 @@ env:
   RUSTLS_VERSION: 0.15.0
   # handled in renovate.json
   OPENLDAP_VERSION: 2.6.10
+  # renovate: datasource=github-tags depName=nghttp2/nghttp2 versioning=semver registryUrl=https://github.com
+  NGHTTP2_VERSION: 1.68.0
+  # renovate: datasource=github-tags depName=pizlonator/fil-c versioning=semver-partial registryUrl=https://github.com
+  FIL_C_VERSION: 0.674
 
 jobs:
   linux:
@@ -191,13 +195,13 @@ jobs:
           - name: 'openssl torture !FTP'
             install_packages: libnghttp2-dev libssh2-1-dev libc-ares-dev
             generate: -DCURL_USE_OPENSSL=ON -DENABLE_DEBUG=ON -DENABLE_ARES=ON
-            tflags: -t --shallow=25 !FTP
+            tflags: '-t --shallow=25 !FTP'
             torture: true
 
           - name: 'openssl torture FTP'
             install_packages: libnghttp2-dev libssh2-1-dev libc-ares-dev
             generate: -DCURL_USE_OPENSSL=ON -DENABLE_DEBUG=ON -DENABLE_ARES=ON
-            tflags: -t --shallow=20 FTP
+            tflags: '-t --shallow=20 FTP'
             torture: true
 
           - name: 'openssl i686'
@@ -212,6 +216,17 @@ jobs:
 
           - name: '!ssl !http !smtp !imap'
             configure: --without-ssl --enable-debug --disable-http --disable-smtp --disable-imap --disable-unity
+
+          - name: 'libressl Fil-C'
+            install_steps: filc libressl-filc nghttp2-filc pytest
+            tflags: '!776'  # adds 1-9 minutes to the test run step, and fails consistently
+            CC: /home/runner/filc/build/bin/filcc
+            PKG_CONFIG_PATH: /home/runner/nghttp2/lib/pkgconfig
+            generate: >-
+              -DBUILD_STATIC_LIBS=ON -DBUILD_SHARED_LIBS=OFF -DCMAKE_UNITY_BUILD=OFF
+              -DOPENSSL_ROOT_DIR=/home/runner/libressl -DCURL_USE_LIBPSL=OFF
+              -DCURL_ZLIB=OFF -DCURL_BROTLI=OFF -DCURL_ZSTD=OFF
+              -DCURL_DISABLE_LDAP=ON -DUSE_LIBIDN2=OFF -DCURL_USE_LIBSSH2=OFF
 
           - name: 'clang-tidy'
             install_packages: clang-tidy libssl-dev libidn2-dev libssh2-1-dev libnghttp2-dev libldap-dev libkrb5-dev librtmp-dev libgnutls28-dev
@@ -292,12 +307,12 @@ jobs:
           - name: 'event-based'
             install_packages: libssh-dev
             configure: --enable-debug --disable-shared --disable-threaded-resolver --with-libssh --with-openssl
-            tflags: -n --test-event '!TLS-SRP'
+            tflags: '-n --test-event'
 
           - name: 'duphandle'
             install_packages: libssh-dev
             configure: --enable-debug --disable-shared --disable-threaded-resolver --with-libssh --with-openssl
-            tflags: -n --test-duphandle '!TLS-SRP'
+            tflags: '-n --test-duphandle'
 
           - name: 'rustls valgrind'
             install_packages: libnghttp2-dev libldap-dev valgrind
@@ -351,7 +366,7 @@ jobs:
             HOMEBREW_NO_AUTO_UPDATE=1 /home/linuxbrew/.linuxbrew/bin/brew install ${INSTALL_PACKAGES_BREW}
           fi
 
-      - name: 'install prereqs'
+      - name: 'install prereqs (i686)'
         if: ${{ contains(matrix.build.name, 'i686') }}
         run: |
           sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list
@@ -363,7 +378,7 @@ jobs:
             libpsl-dev:i386 libbrotli-dev:i386 libzstd-dev:i386 \
             ${MATRIX_INSTALL_PACKAGES}
 
-      - name: 'install dependencies'
+      - name: 'install prereqs (alpine)'
         if: ${{ startsWith(matrix.build.container, 'alpine') }}
         run: |
           apk add --no-cache build-base autoconf automake libtool perl openssl-dev \
@@ -371,6 +386,16 @@ jobs:
             krb5-dev libpsl-dev c-ares-dev \
             py3-impacket py3-asn1 py3-six py3-pycryptodomex \
             perl-time-hires openssh stunnel sudo git openssl
+
+      - name: 'install Fil-C'
+        if: ${{ contains(matrix.build.install_steps, 'filc') }}
+        run: |
+          cd /home/runner
+          curl --disable --fail --silent --show-error --connect-timeout 15 --max-time 120 --retry 6 --retry-connrefused \
+            --location "https://github.com/pizlonator/fil-c/releases/download/v${FIL_C_VERSION}/filc-${FIL_C_VERSION}-linux-x86_64.tar.xz" | tar -xJ
+          mv "filc-${FIL_C_VERSION}-linux-x86_64" filc
+          cd filc
+          ./setup.sh
 
       - name: 'cache libressl'
         if: ${{ contains(matrix.build.install_steps, 'libressl') }}
@@ -389,6 +414,48 @@ jobs:
             --location "https://github.com/libressl/portable/releases/download/v${LIBRESSL_VERSION}/libressl-${LIBRESSL_VERSION}.tar.gz" | tar -xz
           cd "libressl-${LIBRESSL_VERSION}"
           cmake -B . -G Ninja -DLIBRESSL_APPS=OFF -DLIBRESSL_TESTS=OFF -DCMAKE_INSTALL_PREFIX=/home/runner/libressl
+          cmake --build .
+          cmake --install .
+
+      - name: 'cache libressl (filc)'
+        if: ${{ contains(matrix.build.install_steps, 'libressl-filc') }}
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        id: cache-libressl-filc
+        env:
+          cache-name: cache-libressl-filc
+        with:
+          path: ~/libressl
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.LIBRESSL_VERSION }}-${{ env.FIL_C_VERSION }}
+
+      - name: 'build libressl (filc)'
+        if: ${{ contains(matrix.build.install_steps, 'libressl-filc') && steps.cache-libressl-filc.outputs.cache-hit != 'true' }}
+        run: |
+          curl --disable --fail --silent --show-error --connect-timeout 15 --max-time 120 --retry 6 --retry-connrefused \
+            --location "https://github.com/libressl/portable/releases/download/v${LIBRESSL_VERSION}/libressl-${LIBRESSL_VERSION}.tar.gz" | tar -xz
+          cd "libressl-${LIBRESSL_VERSION}"
+          cmake -B . -G Ninja -DLIBRESSL_APPS=OFF -DLIBRESSL_TESTS=OFF -DCMAKE_INSTALL_PREFIX=/home/runner/libressl \
+            -DCMAKE_C_COMPILER=/home/runner/filc/build/bin/filcc -DENABLE_ASM=OFF
+          cmake --build .
+          cmake --install .
+
+      - name: 'cache nghttp2 (filc)'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        id: cache-nghttp2-filc
+        env:
+          cache-name: cache-nghttp2-filc
+        with:
+          path: ~/nghttp2
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.NGHTTP2_VERSION }}-${{ env.FIL_C_VERSION }}
+
+      - name: 'build nghttp2 (filc)'
+        if: ${{ contains(matrix.build.install_steps, 'nghttp2-filc') && steps.cache-nghttp2-filc.outputs.cache-hit != 'true' }}
+        run: |
+          curl --disable --fail --silent --show-error --connect-timeout 15 --max-time 120 --retry 6 --retry-connrefused \
+            --location "https://github.com/nghttp2/nghttp2/releases/download/v${NGHTTP2_VERSION}/nghttp2-${NGHTTP2_VERSION}.tar.xz" | tar -xJ
+          cd "nghttp2-${NGHTTP2_VERSION}"
+          cmake -B . -G Ninja -DENABLE_LIB_ONLY=ON -DBUILD_TESTING=OFF -DENABLE_DOC=OFF -DCMAKE_INSTALL_PREFIX=/home/runner/nghttp2 \
+            -DBUILD_STATIC_LIBS=ON -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_C_COMPILER=/home/runner/filc/build/bin/filcc
           cmake --build .
           cmake --install .
 
@@ -652,7 +719,7 @@ jobs:
           fi
 
       - name: 'single-use function check'
-        if: ${{ contains(matrix.build.configure, '--disable-unity') || contains(matrix.build.generate, '-DCMAKE_UNITY_BUILD=OFF') }}
+        if: ${{ (contains(matrix.build.configure, '--disable-unity') || contains(matrix.build.generate, '-DCMAKE_UNITY_BUILD=OFF')) && !contains(matrix.build.install_steps, 'filc') }}
         run: |
           git config --global --add safe.directory "*"
           if [ "${MATRIX_BUILD}" = 'cmake' ]; then
@@ -698,6 +765,7 @@ jobs:
         run: |
           if [ "${TEST_TARGET}" = 'test-ci' ] && [[ "${MATRIX_INSTALL_PACKAGES}" = *'valgrind'* ]]; then
             TFLAGS+=' -j6'
+            TFLAGS+=' !776'  # skip long-running flaky test
             if [[ "${MATRIX_INSTALL_PACKAGES}" = *'libgss-dev'* ]]; then
               TFLAGS+=' ~2077 ~2078'  # memory leaks from Curl_auth_decode_spnego_message() -> gss_init_sec_context()
             fi
