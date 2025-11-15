@@ -523,11 +523,11 @@ static int cf_ngtcp2_handshake_completed(ngtcp2_conn *tconn, void *user_data)
   if(Curl_trc_is_verbose(data)) {
     const ngtcp2_transport_params *rp;
     rp = ngtcp2_conn_get_remote_transport_params(ctx->qconn);
-    CURL_TRC_CF(data, cf, "handshake complete after %dms, remote transport["
-                "max_udp_payload=%" FMT_PRIu64
+    CURL_TRC_CF(data, cf, "handshake complete after %" FMT_TIMEDIFF_T
+                "ms, remote transport[max_udp_payload=%" FMT_PRIu64
                 ", initial_max_data=%" FMT_PRIu64
                 "]",
-               (int)curlx_timediff(ctx->handshake_at, ctx->started_at),
+               curlx_timediff_ms(ctx->handshake_at, ctx->started_at),
                (curl_uint64_t)rp->max_udp_payload_size,
                (curl_uint64_t)rp->initial_max_data);
   }
@@ -1327,32 +1327,25 @@ static CURLcode init_ngh3_conn(struct Curl_cfilter *cf,
   return CURLE_OK;
 }
 
-static ssize_t recv_closed_stream(struct Curl_cfilter *cf,
+static CURLcode recv_closed_stream(struct Curl_cfilter *cf,
                                   struct Curl_easy *data,
                                   struct h3_stream_ctx *stream,
-                                  CURLcode *err)
+                                  size_t *pnread)
 {
-  ssize_t nread = -1;
-
   (void)cf;
+  *pnread = 0;
   if(stream->reset) {
     failf(data, "HTTP/3 stream %" FMT_PRId64 " reset by server", stream->id);
-    *err = data->req.bytecount ? CURLE_PARTIAL_FILE : CURLE_HTTP3;
-    goto out;
+    return data->req.bytecount ? CURLE_PARTIAL_FILE : CURLE_HTTP3;
   }
   else if(!stream->resp_hds_complete) {
     failf(data,
           "HTTP/3 stream %" FMT_PRId64 " was closed cleanly, but before "
           "getting all response header fields, treated as error",
           stream->id);
-    *err = CURLE_HTTP3;
-    goto out;
+    return CURLE_HTTP3;
   }
-  *err = CURLE_OK;
-  nread = 0;
-
-out:
-  return nread;
+  return CURLE_OK;
 }
 
 /* incoming data frames on the h3 stream */
@@ -1398,9 +1391,7 @@ static CURLcode cf_ngtcp2_recv(struct Curl_cfilter *cf, struct Curl_easy *data,
     goto out;
   }
   else if(stream->closed) {
-    ssize_t nread = recv_closed_stream(cf, data, stream, &result);
-    if(nread > 0)
-      *pnread = (size_t)nread;
+    result = recv_closed_stream(cf, data, stream, pnread);
     goto out;
   }
   result = CURLE_AGAIN;
@@ -2720,7 +2711,7 @@ static CURLcode cf_ngtcp2_query(struct Curl_cfilter *cf,
   }
   case CF_QUERY_CONNECT_REPLY_MS:
     if(ctx->q.got_first_byte) {
-      timediff_t ms = curlx_timediff(ctx->q.first_byte_at, ctx->started_at);
+      timediff_t ms = curlx_timediff_ms(ctx->q.first_byte_at, ctx->started_at);
       *pres1 = (ms < INT_MAX) ? (int)ms : INT_MAX;
     }
     else
@@ -2764,45 +2755,49 @@ static CURLcode cf_ngtcp2_query(struct Curl_cfilter *cf,
 }
 
 static bool cf_ngtcp2_conn_is_alive(struct Curl_cfilter *cf,
-                                     struct Curl_easy *data,
-                                     bool *input_pending)
+                                    struct Curl_easy *data,
+                                    bool *input_pending)
 {
-   struct cf_ngtcp2_ctx *ctx = cf->ctx;
-   bool alive = FALSE;
-   const ngtcp2_transport_params *rp;
-   struct cf_call_data save;
+  struct cf_ngtcp2_ctx *ctx = cf->ctx;
+  bool alive = FALSE;
+  const ngtcp2_transport_params *rp;
+  struct cf_call_data save;
 
-   CF_DATA_SAVE(save, cf, data);
-   *input_pending = FALSE;
-   if(!ctx->qconn || ctx->shutdown_started)
-     goto out;
+  CF_DATA_SAVE(save, cf, data);
+  *input_pending = FALSE;
+  if(!ctx->qconn || ctx->shutdown_started)
+    goto out;
 
-   /* We do not announce a max idle timeout, but when the peer does
-    * it will close the connection when it expires. */
-   rp = ngtcp2_conn_get_remote_transport_params(ctx->qconn);
-   if(rp && rp->max_idle_timeout) {
-     timediff_t idletime = curlx_timediff(curlx_now(), ctx->q.last_io);
-     if(idletime > 0 && (uint64_t)idletime > rp->max_idle_timeout)
-       goto out;
-   }
+  /* We do not announce a max idle timeout, but when the peer does
+   * it will close the connection when it expires. */
+  rp = ngtcp2_conn_get_remote_transport_params(ctx->qconn);
+  if(rp && rp->max_idle_timeout) {
+    timediff_t idletime_ms = curlx_timediff_ms(curlx_now(), ctx->q.last_io);
+    if(idletime_ms > 0) {
+      uint64_t max_idle_ms =
+        (uint64_t)(rp->max_idle_timeout / NGTCP2_MILLISECONDS);
+      if((uint64_t)idletime_ms > max_idle_ms)
+        goto out;
+    }
+  }
 
-   if(!cf->next || !cf->next->cft->is_alive(cf->next, data, input_pending))
-     goto out;
+  if(!cf->next || !cf->next->cft->is_alive(cf->next, data, input_pending))
+    goto out;
 
-   alive = TRUE;
-   if(*input_pending) {
-     CURLcode result;
-     /* This happens before we have sent off a request and the connection is
-        not in use by any other transfer, there should not be any data here,
-        only "protocol frames" */
-     *input_pending = FALSE;
-     result = cf_progress_ingress(cf, data, NULL);
-     CURL_TRC_CF(data, cf, "is_alive, progress ingress -> %d", result);
-     alive = result ? FALSE : TRUE;
-   }
+  alive = TRUE;
+  if(*input_pending) {
+    CURLcode result;
+    /* This happens before we have sent off a request and the connection is
+       not in use by any other transfer, there should not be any data here,
+       only "protocol frames" */
+    *input_pending = FALSE;
+    result = cf_progress_ingress(cf, data, NULL);
+    CURL_TRC_CF(data, cf, "is_alive, progress ingress -> %d", result);
+    alive = result ? FALSE : TRUE;
+  }
 
 out:
-   CF_DATA_RESTORE(cf, save);
+  CF_DATA_RESTORE(cf, save);
    return alive;
 }
 
