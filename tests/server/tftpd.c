@@ -148,7 +148,7 @@ struct bf {
   tftphdr_storage_t buf;  /* room for data packet */
 };
 
-#define BF_ALLOC -3       /* alloc'd but not yet filled */
+#define BF_ALLOC -3       /* allocated but not yet filled */
 #define BF_FREE  -2       /* free */
 
 #define opcode_RRQ   1
@@ -310,7 +310,7 @@ static struct tftphdr *rw_init(int x)
 {
   newline = 0;                    /* init crlf flag */
   prevchar = -1;
-  bfs[0].counter = BF_ALLOC;     /* pass out the first buffer */
+  bfs[0].counter = BF_ALLOC;      /* pass out the first buffer */
   current = 0;
   bfs[1].counter = BF_FREE;
   nextone = x;                    /* ahead or behind? */
@@ -339,7 +339,7 @@ static int readit(struct testcase *test, struct tftphdr * volatile *dpp,
   current = !current;             /* "incr" current */
 
   b = &bfs[current];              /* look at new buffer */
-  if(b->counter == BF_FREE)      /* if it's empty */
+  if(b->counter == BF_FREE)       /* if empty */
     read_ahead(test, convert);    /* fill it */
 
   *dpp = &b->buf.hdr;             /* set caller's ptr */
@@ -360,7 +360,7 @@ static void read_ahead(struct testcase *test,
   struct tftphdr *dp;
 
   b = &bfs[nextone];              /* look at "next" buffer */
-  if(b->counter != BF_FREE)      /* nop if not free */
+  if(b->counter != BF_FREE)       /* nop if not free */
     return;
   nextone = !nextone;             /* "incr" next buffer ptr */
 
@@ -417,7 +417,7 @@ static int writeit(struct testcase *test, struct tftphdr * volatile *dpp,
   current = !current;             /* switch to other buffer */
   if(bfs[current].counter != BF_FREE)     /* if not free */
     write_behind(test, convert);          /* flush it */
-  bfs[current].counter = BF_ALLOC;        /* mark as alloc'd */
+  bfs[current].counter = BF_ALLOC;        /* mark as allocated */
   *dpp = &bfs[current].buf.hdr;
   return ct;                      /* this is a lie of course */
 }
@@ -447,7 +447,7 @@ static ssize_t write_behind(struct testcase *test, int convert)
     snprintf(outfile, sizeof(outfile), "%s/upload.%ld", logdir, test->testno);
     test->ofile = open(outfile, O_CREAT|O_RDWR|CURL_O_BINARY, 0777);
     if(test->ofile == -1) {
-      logmsg("Couldn't create and/or open file %s for upload!", outfile);
+      logmsg("Could not create and/or open file %s for upload!", outfile);
       return -1; /* failure! */
     }
   }
@@ -1017,7 +1017,7 @@ static int tftpd_parse_servercmd(struct testcase *req)
     error = errno;
     logmsg("fopen() failed with error (%d) %s",
            error, curlx_strerror(error, errbuf, sizeof(errbuf)));
-    logmsg("  Couldn't open test file %ld", req->testno);
+    logmsg("  Could not open test file %ld", req->testno);
     return 1; /* done */
   }
   else {
@@ -1141,7 +1141,7 @@ static int validate_access(struct testcase *test,
       int error = errno;
       logmsg("fopen() failed with error (%d) %s",
              error, curlx_strerror(error, errbuf, sizeof(errbuf)));
-      logmsg("Couldn't open test file for test: %ld", testno);
+      logmsg("Could not open test file for test: %ld", testno);
       return TFTP_EACCESS;
     }
     else {

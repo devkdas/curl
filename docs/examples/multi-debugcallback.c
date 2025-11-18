@@ -25,16 +25,14 @@
  * multi interface and debug callback
  * </DESC>
  */
-
 #include <stdio.h>
 #include <string.h>
 
-/* curl stuff */
 #include <curl/curl.h>
 
 #define TRUE 1
 
-static void dump(const char *text, FILE *stream, unsigned char *ptr,
+static void dump(const char *text, FILE *stream, const unsigned char *ptr,
                  size_t size, char nohex)
 {
   size_t i;
