@@ -1974,7 +1974,9 @@ static CURLcode parseurlandfillconn(struct Curl_easy *data,
       conn->remote_port = (unsigned short)port;
   }
 
-  (void)curl_url_get(uh, CURLUPART_QUERY, &data->state.up.query, 0);
+  uc = curl_url_get(uh, CURLUPART_QUERY, &data->state.up.query, 0);
+  if(uc && (uc != CURLUE_NO_QUERY))
+    return CURLE_OUT_OF_MEMORY;
 
 #ifdef USE_IPV6
   if(data->set.scope_id)
@@ -2285,7 +2287,11 @@ static CURLcode parse_proxy(struct Curl_easy *data,
     conn->bits.proxy_user_passwd = TRUE; /* enable it */
   }
 
-  (void)curl_url_get(uhp, CURLUPART_PORT, &portptr, 0);
+  uc = curl_url_get(uhp, CURLUPART_PORT, &portptr, 0);
+  if(uc == CURLUE_OUT_OF_MEMORY) {
+    result = CURLE_OUT_OF_MEMORY;
+    goto error;
+  }
 
   if(portptr) {
     curl_off_t num;
