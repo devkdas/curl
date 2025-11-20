@@ -261,6 +261,7 @@ static void free_globalconfig(void)
     fclose(global->trace_stream);
   global->trace_stream = NULL;
 
+  tool_safefree(global->ssl_sessions);
   tool_safefree(global->libcurl);
 #ifdef _WIN32
   free(global->term.buf);

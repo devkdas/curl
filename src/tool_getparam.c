@@ -3061,7 +3061,7 @@ ParameterError parse_args(int argc, argv_item_t argv[])
         if(i < (argc - 1)) {
           nextarg = convert_tchar_to_UTF8(argv[i + 1]);
           if(!nextarg) {
-            unicodefree(orig_opt);
+            unicodefree(CURL_UNCONST(orig_opt));
             return PARAM_NO_MEM;
           }
         }
@@ -3069,7 +3069,7 @@ ParameterError parse_args(int argc, argv_item_t argv[])
         result = getparameter(orig_opt, nextarg, &passarg, config,
                               CONFIG_MAX_LEVELS);
 
-        unicodefree(nextarg);
+        unicodefree(CURL_UNCONST(nextarg));
         config = global->last;
         if(result == PARAM_NEXT_OPERATION) {
           /* Reset result as PARAM_NEXT_OPERATION is only used here and not
@@ -3107,7 +3107,7 @@ ParameterError parse_args(int argc, argv_item_t argv[])
     }
 
     if(!result) {
-      unicodefree(orig_opt);
+      unicodefree(CURL_UNCONST(orig_opt));
       orig_opt = NULL;
     }
   }
@@ -3130,6 +3130,6 @@ ParameterError parse_args(int argc, argv_item_t argv[])
       helpf("%s", reason);
   }
 
-  unicodefree(orig_opt);
+  unicodefree(CURL_UNCONST(orig_opt));
   return result;
 }
