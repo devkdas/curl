@@ -71,12 +71,6 @@
 #include "curl_ngtcp2.h"
 
 
-/* The last 3 #include files should be in this order */
-#include "../curl_printf.h"
-#include "../curl_memory.h"
-#include "../memdebug.h"
-
-
 #define QUIC_MAX_STREAMS       (256 * 1024)
 #define QUIC_MAX_DATA          (1 * 1024 * 1024)
 #define QUIC_HANDSHAKE_TIMEOUT (10 * NGTCP2_SECONDS)
@@ -1798,7 +1792,7 @@ static CURLcode cf_ngtcp2_recv_pkts(const unsigned char *buf, size_t buflen,
   int rv;
 
   if(!rctx->pkt_count) {
-    pktx_update_time(pktx->data, pktx, pktx->cf);
+    pktx_update_time(pktx, pktx->cf);
     ngtcp2_path_storage_zero(&pktx->ps);
   }
 
@@ -1914,8 +1908,8 @@ static CURLcode read_pkt_to_send(void *userp,
         struct h3_stream_ctx *stream = H3_STREAM_CTX(ctx, x->data);
         DEBUGASSERT(ndatalen == -1);
         nghttp3_conn_block_stream(ctx->h3conn, stream_id);
-        CURL_TRC_CF(x->data, x->cf, "[%" FMT_PRId64 "] block quic flow",
-                    (curl_int64_t)stream_id);
+        CURL_TRC_CF(x->data, x->cf, "[%" PRId64 "] block quic flow",
+                    stream_id);
         DEBUGASSERT(stream);
         if(stream)
           stream->quic_flow_blocked = TRUE;
@@ -1977,7 +1971,7 @@ static CURLcode cf_progress_egress(struct Curl_cfilter *cf,
     pktx = &local_pktx;
   }
   else {
-    pktx_update_time(data, pktx, cf);
+    pktx_update_time(pktx, cf);
     ngtcp2_path_storage_zero(&pktx->ps);
   }
 
