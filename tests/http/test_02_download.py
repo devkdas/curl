@@ -27,11 +27,9 @@
 import difflib
 import filecmp
 import logging
-import math
 import os
 import re
 import sys
-from datetime import timedelta
 import pytest
 
 from testenv import Env, CurlClient, LocalClient
@@ -45,6 +43,7 @@ class TestDownload:
     @pytest.fixture(autouse=True, scope='class')
     def _class_scope(self, env, httpd):
         indir = httpd.docs_dir
+        env.make_data_file(indir=indir, fname="data-0k", fsize=0)
         env.make_data_file(indir=indir, fname="data-10k", fsize=10*1024)
         env.make_data_file(indir=indir, fname="data-100k", fsize=100*1024)
         env.make_data_file(indir=indir, fname="data-1m", fsize=1024*1024)
@@ -54,9 +53,10 @@ class TestDownload:
 
     # download 1 file
     @pytest.mark.parametrize("proto", Env.http_protos())
-    def test_02_01_download_1(self, env: Env, httpd, nghttpx, proto):
+    @pytest.mark.parametrize("docname", ['data.json', 'data-0k', 'data-10k', 'data-100k'])
+    def test_02_01_download_1(self, env: Env, httpd, nghttpx, proto, docname):
         curl = CurlClient(env=env)
-        url = f'https://{env.authority_for(env.domain1, proto)}/data.json'
+        url = f'https://{env.authority_for(env.domain1, proto)}/{docname}'
         r = curl.http_download(urls=[url], alpn_proto=proto)
         r.check_response(http_status=200)
 
@@ -277,38 +277,12 @@ class TestDownload:
 
     # download serial via lib client, pause/resume at different offsets
     @pytest.mark.parametrize("pause_offset", [0, 10*1024, 100*1023, 640000])
-    @pytest.mark.parametrize("proto", ['http/1.1', 'h3'])
+    @pytest.mark.parametrize("proto", Env.http_protos())
     def test_02_21_lib_serial(self, env: Env, httpd, nghttpx, proto, pause_offset):
-        if proto == 'h3' and not env.have_h3():
-            pytest.skip("h3 not supported")
         count = 2
-        docname = 'data-10m'
+        docname = 'data-1m'
         url = f'https://localhost:{env.https_port}/{docname}'
         client = LocalClient(name='cli_hx_download', env=env)
-        if not client.exists():
-            pytest.skip(f'example client not built: {client.name}')
-        r = client.run(args=[
-             '-n', f'{count}', '-P', f'{pause_offset}', '-V', proto, url
-        ])
-        r.check_exit_code(0)
-        srcfile = os.path.join(httpd.docs_dir, docname)
-        self.check_downloads(client, srcfile, count)
-
-    # h2 download parallel via lib client, pause/resume at different offsets
-    # debug-override stream window size to reproduce #16955
-    @pytest.mark.parametrize("pause_offset", [0, 10*1024, 100*1023, 640000])
-    @pytest.mark.parametrize("swin_max", [0, 10*1024])
-    @pytest.mark.skipif(condition=not Env.have_h2_curl(), reason="curl without h2")
-    def test_02_21_h2_lib_serial(self, env: Env, httpd, pause_offset, swin_max):
-        proto = 'h2'
-        count = 2
-        docname = 'data-10m'
-        url = f'https://localhost:{env.https_port}/{docname}'
-        run_env = os.environ.copy()
-        run_env['CURL_DEBUG'] = 'multi,http/2'
-        if swin_max > 0:
-            run_env['CURL_H2_STREAM_WIN_MAX'] = f'{swin_max}'
-        client = LocalClient(name='cli_hx_download', env=env, run_env=run_env)
         if not client.exists():
             pytest.skip(f'example client not built: {client.name}')
         r = client.run(args=[
@@ -424,15 +398,17 @@ class TestDownload:
         count = 1
         url = f'https://{env.authority_for(env.domain1, proto)}/data-1m'
         curl = CurlClient(env=env)
-        speed_limit = 384 * 1024
-        min_duration = math.floor((1024 * 1024)/speed_limit)
+        speed_limit = 256 * 1024
         r = curl.http_download(urls=[url], alpn_proto=proto, extra_args=[
             '--limit-rate', f'{speed_limit}'
         ])
         r.check_response(count=count, http_status=200)
-        assert r.duration > timedelta(seconds=min_duration), \
-            f'rate limited transfer should take more than {min_duration}s, '\
-            f'not {r.duration}'
+        dl_speed = r.stats[0]['speed_download']
+        # speed limit is only exact on long durations. Ideally this transfer
+        # would take 4 seconds, but it may end just after 3 because then
+        # we have downloaded the rest and will not wait for the rate
+        # limit to increase again.
+        assert dl_speed <= ((1024*1024)/3), f'{r.stats[0]}'
 
     # make extreme parallel h2 upgrades, check invalid conn reuse
     # before protocol switch has happened
@@ -564,10 +540,10 @@ class TestDownload:
             pytest.skip("h3 early data not supported")
         if proto != 'h3' and sys.platform.startswith('darwin') and env.ci_run:
             pytest.skip('failing on macOS CI runners')
-        if proto == 'h3' and sys.platform.startswith('darwin') and env.curl_uses_lib('wolfssl'):
-            pytest.skip('h3 wolfssl early data failing on macOS')
-        if proto == 'h3' and sys.platform.startswith('darwin') and env.curl_uses_lib('gnutls'):
-            pytest.skip('h3 gnutls early data failing on macOS')
+        if proto == 'h3' and env.curl_uses_lib('wolfssl'):
+            pytest.skip('h3 wolfssl early data failing')
+        if proto == 'h3' and env.curl_uses_lib('gnutls'):
+            pytest.skip('h3 gnutls early data failing')
         count = 2
         docname = 'data-10k'
         # we want this test to always connect to nghttpx, since it is

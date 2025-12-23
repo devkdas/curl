@@ -32,7 +32,6 @@
  * as defined in asyn.h, nothing else belongs in this file!
  **********************************************************************/
 
-#include <limits.h>
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
 #endif
@@ -49,10 +48,8 @@
 
 #include "urldata.h"
 #include "cfilters.h"
-#include "sendf.h"
+#include "curl_trc.h"
 #include "hostip.h"
-#include "hash.h"
-#include "share.h"
 #include "url.h"
 #include "multiif.h"
 #include "curlx/inet_pton.h"
@@ -104,10 +101,6 @@
 #define HTTPSRR_WORKS
 #endif
 
-/* The last 2 #include files should be in this order */
-#include "curl_memory.h"
-#include "memdebug.h"
-
 #define CARES_TIMEOUT_PER_ATTEMPT 2000
 
 static int ares_ver = 0;
@@ -143,7 +136,6 @@ void Curl_async_global_cleanup(void)
   ares_library_cleanup();
 #endif
 }
-
 
 static void sock_state_cb(void *data, ares_socket_t socket_fd,
                           int readable, int writable)
@@ -185,8 +177,7 @@ static CURLcode async_ares_init(struct Curl_easy *data)
   status = ares_init_options(&ares->channel, &options, optmask);
   if(status != ARES_SUCCESS) {
     ares->channel = NULL;
-    rc = (status == ARES_ENOMEM) ?
-         CURLE_OUT_OF_MEMORY : CURLE_FAILED_INIT;
+    rc = (status == ARES_ENOMEM) ? CURLE_OUT_OF_MEMORY : CURLE_FAILED_INIT;
     goto out;
   }
 
@@ -313,12 +304,13 @@ CURLcode Curl_async_is_resolved(struct Curl_easy *data,
   /* Now that we have checked for any last minute results above, see if there
      are any responses still pending when the EXPIRE_HAPPY_EYEBALLS_DNS timer
      expires. */
-  if(ares->num_pending
+  if(ares->num_pending &&
      /* This is only set to non-zero if the timer was started. */
-     && (ares->happy_eyeballs_dns_time.tv_sec
-         || ares->happy_eyeballs_dns_time.tv_usec)
-     && (curlx_timediff_ms(curlx_now(), ares->happy_eyeballs_dns_time)
-         >= HAPPY_EYEBALLS_DNS_TIMEOUT)) {
+     (ares->happy_eyeballs_dns_time.tv_sec ||
+      ares->happy_eyeballs_dns_time.tv_usec) &&
+     (curlx_ptimediff_ms(Curl_pgrs_now(data),
+                        &ares->happy_eyeballs_dns_time) >=
+      HAPPY_EYEBALLS_DNS_TIMEOUT)) {
     /* Remember that the EXPIRE_HAPPY_EYEBALLS_DNS timer is no longer
        running. */
     memset(&ares->happy_eyeballs_dns_time, 0,
@@ -343,7 +335,8 @@ CURLcode Curl_async_is_resolved(struct Curl_easy *data,
         Curl_dnscache_mk_entry(data, ares->temp_ai,
                                data->state.async.hostname, 0,
                                data->state.async.port, FALSE);
-      ares->temp_ai = NULL; /* temp_ai now owned by entry */
+      if(data->state.async.dns)
+        ares->temp_ai = NULL; /* temp_ai now owned by entry */
 #ifdef HTTPSRR_WORKS
       if(data->state.async.dns) {
         struct Curl_https_rrinfo *lhrr = Curl_httpsrr_dup_move(&ares->hinfo);
@@ -395,12 +388,11 @@ CURLcode Curl_async_await(struct Curl_easy *data,
   struct async_ares_ctx *ares = &data->state.async.ares;
   CURLcode result = CURLE_OK;
   timediff_t timeout_ms;
-  struct curltime now = curlx_now();
 
   DEBUGASSERT(entry);
   *entry = NULL; /* clear on entry */
 
-  timeout_ms = Curl_timeleft_ms(data, &now, TRUE);
+  timeout_ms = Curl_timeleft_ms(data, TRUE);
   if(timeout_ms < 0) {
     /* already expired! */
     connclose(data->conn, "Timed out before name resolve started");
@@ -421,8 +413,8 @@ CURLcode Curl_async_await(struct Curl_easy *data,
     itimeout_ms = (int)timeout_ms;
 #endif
 
-    max_timeout.tv_sec = itimeout_ms/1000;
-    max_timeout.tv_usec = (itimeout_ms%1000)*1000;
+    max_timeout.tv_sec = itimeout_ms / 1000;
+    max_timeout.tv_usec = (itimeout_ms % 1000) * 1000;
 
     real_timeout = ares_timeout(ares->channel, &max_timeout, &time_buf);
 
@@ -430,7 +422,7 @@ CURLcode Curl_async_await(struct Curl_easy *data,
        second is left, otherwise just use 1000ms to make sure the progress
        callback gets called frequent enough */
     if(!real_timeout->tv_sec)
-      call_timeout_ms = (timediff_t)(real_timeout->tv_usec/1000);
+      call_timeout_ms = (timediff_t)(real_timeout->tv_usec / 1000);
     else
       call_timeout_ms = 1000;
 
@@ -444,15 +436,14 @@ CURLcode Curl_async_await(struct Curl_easy *data,
     if(Curl_pgrsUpdate(data))
       result = CURLE_ABORTED_BY_CALLBACK;
     else {
-      struct curltime now2 = curlx_now();
-      timediff_t elapsed_ms = curlx_timediff_ms(now2, now); /* spent time */
+      struct curltime now = curlx_now(); /* update in loop */
+      timediff_t elapsed_ms = curlx_ptimediff_ms(&now, Curl_pgrs_now(data));
       if(elapsed_ms <= 0)
         timeout_ms -= 1; /* always deduct at least 1 */
       else if(elapsed_ms > timeout_ms)
         timeout_ms = -1;
       else
         timeout_ms -= elapsed_ms;
-      now = now2; /* for next loop */
     }
     if(timeout_ms < 0)
       result = CURLE_OPERATION_TIMEDOUT;
@@ -521,7 +512,7 @@ static void async_ares_hostbyname_cb(void *user_data,
   if(ARES_SUCCESS == status) {
     ares->ares_status = status; /* one success overrules any error */
     async_addr_concat(&ares->temp_ai,
-      Curl_he2ai(hostent, data->state.async.port));
+                      Curl_he2ai(hostent, data->state.async.port));
   }
   else if(ares->ares_status != ARES_SUCCESS) {
     /* no success so far, remember last error */
@@ -588,9 +579,8 @@ static void async_ares_hostbyname_cb(void *user_data,
        timeout to prevent it. After all, we do not even know where in the
        c-ares retry cycle each request is.
     */
-    ares->happy_eyeballs_dns_time = curlx_now();
-    Curl_expire(data, HAPPY_EYEBALLS_DNS_TIMEOUT,
-                EXPIRE_HAPPY_EYEBALLS_DNS);
+    ares->happy_eyeballs_dns_time = *Curl_pgrs_now(data);
+    Curl_expire(data, HAPPY_EYEBALLS_DNS_TIMEOUT, EXPIRE_HAPPY_EYEBALLS_DNS);
   }
 }
 
@@ -632,7 +622,7 @@ async_ares_node2addr(struct ares_addrinfo_node *node)
     if((size_t)ai->ai_addrlen < ss_size)
       continue;
 
-    ca = malloc(sizeof(struct Curl_addrinfo) + ss_size);
+    ca = curlx_malloc(sizeof(struct Curl_addrinfo) + ss_size);
     if(!ca) {
       error = EAI_MEMORY;
       break;
@@ -718,40 +708,31 @@ static void async_ares_rr_done(void *user_data, ares_status_t status,
 /*
  * Curl_async_getaddrinfo() - when using ares
  *
- * Returns name information about the given hostname and port number. If
- * successful, the 'hostent' is returned and the fourth argument will point to
- * memory we need to free after use. That memory *MUST* be freed with
- * Curl_freeaddrinfo(), nothing else.
+ * Starts a name resolve for the given hostname and port number.
  */
-struct Curl_addrinfo *Curl_async_getaddrinfo(struct Curl_easy *data,
-                                             const char *hostname,
-                                             int port,
-                                             int ip_version,
-                                             int *waitp)
+CURLcode Curl_async_getaddrinfo(struct Curl_easy *data, const char *hostname,
+                                int port, int ip_version)
 {
   struct async_ares_ctx *ares = &data->state.async.ares;
 #ifdef USE_HTTPSRR
   char *rrname = NULL;
 #endif
-  *waitp = 0; /* default to synchronous response */
 
   if(async_ares_init_lazy(data))
-    return NULL;
+    return CURLE_FAILED_INIT;
 
   data->state.async.done = FALSE;   /* not done */
   data->state.async.dns = NULL;     /* clear */
   data->state.async.port = port;
   data->state.async.ip_version = ip_version;
-  data->state.async.hostname = strdup(hostname);
+  data->state.async.hostname = curlx_strdup(hostname);
   if(!data->state.async.hostname)
-    return NULL;
+    return CURLE_OUT_OF_MEMORY;
 #ifdef USE_HTTPSRR
   if(port != 443) {
     rrname = curl_maprintf("_%d_.https.%s", port, hostname);
-    if(!rrname) {
-      free(data->state.async.hostname);
-      return NULL;
-    }
+    if(!rrname)
+      return CURLE_OUT_OF_MEMORY;
   }
 #endif
 
@@ -838,9 +819,8 @@ struct Curl_addrinfo *Curl_async_getaddrinfo(struct Curl_easy *data,
                       async_ares_rr_done, data, NULL);
   }
 #endif
-  *waitp = 1; /* expect asynchronous response */
 
-  return NULL; /* no struct yet */
+  return CURLE_OK;
 }
 
 /* Set what DNS server are is to use. This is called in 2 situations:

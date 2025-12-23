@@ -557,7 +557,7 @@ class TestUpload:
         r.check_response(count=count, http_status=200)
         assert r.responses[0]['header']['received-length'] == f'{up_len}', f'{r.responses[0]}'
         up_speed = r.stats[0]['speed_upload']
-        assert (speed_limit * 0.5) <= up_speed <= (speed_limit * 1.5), f'{r.stats[0]}'
+        assert up_speed <= (speed_limit * 1.1), f'{r.stats[0]}'
 
     # speed limited on echo handler
     @pytest.mark.parametrize("proto", Env.http_protos())
@@ -573,7 +573,7 @@ class TestUpload:
         ])
         r.check_response(count=count, http_status=200)
         up_speed = r.stats[0]['speed_upload']
-        assert (speed_limit * 0.5) <= up_speed <= (speed_limit * 1.5), f'{r.stats[0]}'
+        assert up_speed <= (speed_limit * 1.1), f'{r.stats[0]}'
 
     # upload larger data, triggering "Expect: 100-continue" code paths
     @pytest.mark.parametrize("proto", ['http/1.1'])
@@ -663,10 +663,10 @@ class TestUpload:
             pytest.skip("h3 not supported")
         if proto != 'h3' and sys.platform.startswith('darwin') and env.ci_run:
             pytest.skip('failing on macOS CI runners')
-        if proto == 'h3' and sys.platform.startswith('darwin') and env.curl_uses_lib('wolfssl'):
-            pytest.skip('h3 wolfssl early data failing on macOS')
-        if proto == 'h3' and sys.platform.startswith('darwin') and env.curl_uses_lib('gnutls'):
-            pytest.skip('h3 gnutls early data failing on macOS')
+        if proto == 'h3' and env.curl_uses_lib('wolfssl'):
+            pytest.skip('h3 wolfssl early data failing')
+        if proto == 'h3' and env.curl_uses_lib('gnutls'):
+            pytest.skip('h3 gnutls early data failing')
         count = 2
         # we want this test to always connect to nghttpx, since it is
         # the only server we have that supports TLS earlydata

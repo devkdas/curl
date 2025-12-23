@@ -32,6 +32,7 @@
 #endif
 
 #include "inet_ntop.h"
+#include "snprintf.h"
 
 #define IN6ADDRSZ       16
 /* #define INADDRSZ         4 */
@@ -61,13 +62,12 @@ static char *inet_ntop4(const unsigned char *src, char *dst, size_t size)
 
   DEBUGASSERT(size >= 16);
 
-  /* this sprintf() does not overflow the buffer. Avoids snprintf to work more
-     widely. Avoids the msnprintf family to work as a curlx function. */
-  (void)(sprintf)(tmp, "%d.%d.%d.%d",
-                  ((int)((unsigned char)src[0])) & 0xff,
-                  ((int)((unsigned char)src[1])) & 0xff,
-                  ((int)((unsigned char)src[2])) & 0xff,
-                  ((int)((unsigned char)src[3])) & 0xff);
+  /* this snprintf() does not overflow the buffer. */
+  SNPRINTF(tmp, sizeof(tmp), "%d.%d.%d.%d",
+           ((int)((unsigned char)src[0])) & 0xff,
+           ((int)((unsigned char)src[1])) & 0xff,
+           ((int)((unsigned char)src[2])) & 0xff,
+           ((int)((unsigned char)src[3])) & 0xff);
 
   len = strlen(tmp);
   if(len == 0 || len >= size) {
@@ -109,17 +109,18 @@ static char *inet_ntop6(const unsigned char *src, char *dst, size_t size)
    */
   memset(words, '\0', sizeof(words));
   for(i = 0; i < IN6ADDRSZ; i++)
-    words[i/2] |= ((unsigned int)src[i] << ((1 - (i % 2)) << 3));
+    words[i / 2] |= ((unsigned int)src[i] << ((1 - (i % 2)) << 3));
 
   best.base = -1;
-  cur.base  = -1;
+  cur.base = -1;
   best.len = 0;
   cur.len = 0;
 
   for(i = 0; i < (IN6ADDRSZ / INT16SZ); i++) {
     if(words[i] == 0) {
       if(cur.base == -1) {
-        cur.base = i; cur.len = 1;
+        cur.base = i;
+        cur.len = 1;
       }
       else
         cur.len++;
@@ -152,7 +153,7 @@ static char *inet_ntop6(const unsigned char *src, char *dst, size_t size)
     /* Is this address an encapsulated IPv4?
      */
     if(i == 6 && best.base == 0 &&
-        (best.len == 6 || (best.len == 5 && words[5] == 0xffff))) {
+       (best.len == 6 || (best.len == 5 && words[5] == 0xffff))) {
       if(!inet_ntop4(src + 12, tp, sizeof(tmp) - (tp - tmp))) {
         return NULL;
       }
@@ -219,4 +220,4 @@ char *curlx_inet_ntop(int af, const void *src, char *buf, size_t size)
     return NULL;
   }
 }
-#endif  /* HAVE_INET_NTOP */
+#endif /* HAVE_INET_NTOP */

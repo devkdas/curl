@@ -30,7 +30,7 @@ use warnings;
 my %disable;
 # the DISABLE options that can be set by CMakeLists.txt
 my %disable_cmake;
-# the DISABLE options propagated via curl_config.h.cmake
+# the DISABLE options propagated via curl_config-cmake.h.in
 my %disable_cmake_config_h;
 # the DISABLE options that are used in C files
 my %file;
@@ -70,7 +70,7 @@ sub scanconf_cmake {
     while(<S>) {
         if(/(CURL_DISABLE_[A-Z0-9_]+)/g) {
             my ($sym)=($1);
-            if(not $sym =~ /^(CURL_DISABLE_INSTALL|CURL_DISABLE_TESTS|CURL_DISABLE_SRP)$/) {
+            if(not $sym =~ /^(CURL_DISABLE_INSTALL|CURL_DISABLE_SRP)$/) {
                 $hashr->{$sym} = 1;
             }
         }
@@ -83,10 +83,10 @@ sub scan_cmake {
 }
 
 sub scan_cmake_config_h {
-    scanconf_cmake(\%disable_cmake_config_h, "$root/lib/curl_config.h.cmake");
+    scanconf_cmake(\%disable_cmake_config_h, "$root/lib/curl_config-cmake.h.in");
 }
 
-my %whitelisted = ("CURL_DISABLE_TYPECHECK" => 1);
+my %whitelisted = ('CURL_DISABLE_DEPRECATION' => 1);
 
 sub scan_file {
     my ($source)=@_;
@@ -114,6 +114,7 @@ sub scan_dir {
 }
 
 sub scan_sources {
+    scan_dir("$root/include/curl");
     scan_dir("$root/src");
     scan_dir("$root/lib");
     scan_dir("$root/lib/vtls");
@@ -138,7 +139,6 @@ scan_cmake();
 scan_cmake_config_h();
 scan_sources();
 scan_docs();
-
 
 my $error = 0;
 # Check the configure symbols for use in code
@@ -165,10 +165,10 @@ for my $s (sort keys %disable_cmake) {
     }
 }
 
-# Check the CMakeLists.txt symbols for use in curl_config.h.cmake
+# Check the CMakeLists.txt symbols for use in curl_config-cmake.h.in
 for my $s (sort keys %disable_cmake) {
     if(!$disable_cmake_config_h{$s}) {
-        printf "Present in CMakeLists.txt, not propagated via curl_config.h.cmake: %s\n", $s;
+        printf "Present in CMakeLists.txt, not propagated via curl_config-cmake.h.in: %s\n", $s;
         $error++;
     }
 }

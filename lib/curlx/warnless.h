@@ -26,12 +26,8 @@
 
 #include "../curl_setup.h"
 
-#ifdef USE_WINSOCK
-#include <curl/curl.h> /* for curl_socket_t */
-#endif
-
 #define CURLX_FUNCTION_CAST(target_type, func) \
-  (target_type)(void (*) (void))(func)
+  (target_type)(void (*)(void))(func)
 
 unsigned char curlx_ultouc(unsigned long ulnum);
 
@@ -73,11 +69,8 @@ bool curlx_sztouz(ssize_t sznum, size_t *puznum);
  * too large and set 0 */
 bool curlx_sotouz_fits(curl_off_t sonum, size_t *puznum);
 
-#ifdef _WIN32
-#undef  read
-#define read(fd, buf, count)  (ssize_t)_read(fd, buf, curlx_uztoui(count))
-#undef  write
-#define write(fd, buf, count) (ssize_t)_write(fd, buf, curlx_uztoui(count))
-#endif
+/* Convert a long to size_t, return FALSE if negative or too large
+ * and set 0 */
+bool curlx_sltouz(long sznum, size_t *puznum);
 
 #endif /* HEADER_CURL_WARNLESS_H */

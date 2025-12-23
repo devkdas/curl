@@ -47,7 +47,7 @@ static int max_total = 20000;
 static int max_requests = 500;
 static size_t max_link_per_page = 5;
 static int follow_relative_links = 0;
-static const char *start_page = "https://www.reuters.com";
+static const char *start_page = "https://www.reuters.com/";
 
 static int pending_interrupt = 0;
 static void sighandler(int dummy)
@@ -65,7 +65,7 @@ struct memory {
 static size_t write_cb(void *contents, size_t sz, size_t nmemb, void *ctx)
 {
   size_t realsize = sz * nmemb;
-  struct memory *mem = (struct memory*) ctx;
+  struct memory *mem = (struct memory *)ctx;
   char *ptr = realloc(mem->buf, mem->size + realsize);
   if(!ptr) {
     /* out of memory */
@@ -109,7 +109,7 @@ static CURL *make_handle(const char *url)
   curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, 2000L);
   /* skip files larger than a gigabyte */
   curl_easy_setopt(curl, CURLOPT_MAXFILESIZE_LARGE,
-                   (curl_off_t)1024*1024*1024);
+                   (curl_off_t)1024 * 1024 * 1024);
   curl_easy_setopt(curl, CURLOPT_COOKIEFILE, "");
   curl_easy_setopt(curl, CURLOPT_FILETIME, 1L);
   curl_easy_setopt(curl, CURLOPT_USERAGENT, "mini crawler");
@@ -121,11 +121,10 @@ static CURL *make_handle(const char *url)
 }
 
 /* HREF finder implemented in libxml2 but could be any HTML parser */
-static size_t follow_links(CURLM *multi, struct memory *mem,
-                           const char *url)
+static size_t follow_links(CURLM *multi, struct memory *mem, const char *url)
 {
-  int opts = HTML_PARSE_NOBLANKS | HTML_PARSE_NOERROR | \
-             HTML_PARSE_NOWARNING | HTML_PARSE_NONET;
+  int opts = HTML_PARSE_NOBLANKS | HTML_PARSE_NOERROR | HTML_PARSE_NOWARNING |
+             HTML_PARSE_NONET;
   htmlDocPtr doc = htmlReadMemory(mem->buf, (int)mem->size, url, NULL, opts);
   size_t count;
   int i;
@@ -135,7 +134,7 @@ static size_t follow_links(CURLM *multi, struct memory *mem,
   xmlXPathObjectPtr result;
   if(!doc)
     return 0;
-  xpath = (xmlChar*) "//a/@href";
+  xpath = (xmlChar *)"//a/@href";
   context = xmlXPathNewContext(doc);
   result = xmlXPathEvalExpression(xpath, context);
   xmlXPathFreeContext(context);
@@ -155,10 +154,10 @@ static size_t follow_links(CURLM *multi, struct memory *mem,
     char *link;
     if(follow_relative_links) {
       xmlChar *orig = href;
-      href = xmlBuildURI(href, (xmlChar *) url);
+      href = xmlBuildURI(href, (xmlChar *)url);
       xmlFree(orig);
     }
-    link = (char *) href;
+    link = (char *)href;
     if(!link || strlen(link) < 20)
       continue;
     if(!strncmp(link, "http://", 7) || !strncmp(link, "https://", 8)) {
@@ -184,11 +183,11 @@ int main(void)
   int pending;
   int complete;
   int still_running;
-  CURLcode res;
+  CURLcode result;
 
-  res = curl_global_init(CURL_GLOBAL_ALL);
-  if(res)
-    return (int)res;
+  result = curl_global_init(CURL_GLOBAL_ALL);
+  if(result)
+    return (int)result;
 
   signal(SIGINT, sighandler);
   LIBXML_TEST_VERSION
@@ -240,7 +239,7 @@ int main(void)
               }
             }
             else {
-              printf("[%d] HTTP %d: %s\n", complete, (int) res_status, url);
+              printf("[%d] HTTP %d: %s\n", complete, (int)res_status, url);
             }
           }
           else {

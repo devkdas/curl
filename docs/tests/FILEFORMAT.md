@@ -11,10 +11,9 @@ XML. All data for a single test case resides in a single ASCII file. Labels
 mark the beginning and the end of all sections, and each label must be written
 in its own line. Comments are either XML-style (enclosed with `<!--` and
 `-->`) or shell script style (beginning with `#`) and must appear on their own
-lines and not alongside actual test data. Most test data files are
-syntactically-valid XML (a few files are not); lack of support for character
-entities is a big difference but macros like %CR fill that particular role
-here.
+lines and not alongside actual test data. Test data files are syntactically
+valid XML; lack of support for character entities is a big difference but macros
+like %CR fill that particular role here.
 
 Each test case source exists as a file matching the format
 `tests/data/testNUM`, where `NUM` is the unique test number, and must begin
@@ -88,6 +87,14 @@ lines:
     %SP  - space
     %TAB - horizontal tab
 
+## Special characters
+
+Macros to help keep data files XML-compliant:
+
+    %AMP - Ampersand: `&`
+    %GT  - Greater-than sign: `>`
+    %LT  - Less-than sign: `<`
+
 ## Insert capped epoch days
 
 Mostly to test capped cookie expire dates: `%days[NUM]` inserts the number of
@@ -107,7 +114,8 @@ the include instruction:
     %include filename%
 
 Or, a variant of the above where the file is loaded as a newline-agnostic
-text file, and `%CR`, `%SP`, `%TAB` macros are expanded after inclusion:
+text file, and whitespace, special character macros and variables expanded
+after inclusion:
 
     %includetext filename%
 
@@ -247,11 +255,6 @@ often run on overloaded machines with unpredictable timing.
 
 Tests using non-7-bit-ASCII characters must provide them with `%hex[]` or
 similar.
-
-In most cases test files comply with the XML format, and pass xmllint cleanly.
-If the data file uses the `&` character, or has other, non-compliant content,
-and making it XML-compliant is not possible or unpractical, use the `notxml`
-keyword to exclude it from linter checks.
 
 ## `<reply>`
 
@@ -586,7 +589,7 @@ command has been run.
 If the variable name has no assignment, no `=`, then that variable is just
 deleted.
 
-### `<command [option="no-q/no-output/no-include/force-output/binary-trace"] [timeout="secs"][delay="secs"][type="perl/shell"]>`
+### `<command [option="no-q/no-output/no-include/no-memdebug/force-output/binary-trace"] [timeout="secs"][delay="secs"][type="perl/shell"]>`
 Command line to run.
 
 If the command spans multiple lines, they are concatenated with a space added
@@ -607,6 +610,9 @@ otherwise written to verify stdout.
 
 Set `option="no-include"` to prevent the test script to slap on the
 `--include` argument.
+
+Set `option="no-memdebug"` to make the test run without the memdebug tracking
+system. For tests that are incompatible - multi-threaded for example.
 
 Set `option="no-q"` avoid using `-q` as the first argument in the curl command
 line.

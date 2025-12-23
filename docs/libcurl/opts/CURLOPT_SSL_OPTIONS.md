@@ -79,8 +79,8 @@ Works with wolfSSL on Windows, Linux (Debian, Ubuntu, Gentoo, Fedora, RHEL),
 macOS, Android and iOS (added in 8.3.0); with GnuTLS (added in 8.5.0) and with
 OpenSSL and its forks (LibreSSL, BoringSSL, etc) on Windows (Added in 7.71.0).
 
-This works with rustls on Windows, macOS, Android and iOS. On Linux it is
-equivalent to using the Mozilla CA certificate bundle. When used with rustls
+This works with Rustls on Windows, macOS, Android and iOS. On Linux it is
+equivalent to using the Mozilla CA certificate bundle. When used with Rustls
 _only_ the native CA store is consulted, not other locations set at run time or
 build time. (Added in 8.13.0)
 
@@ -118,12 +118,12 @@ int main(void)
 {
   CURL *curl = curl_easy_init();
   if(curl) {
-    CURLcode res;
+    CURLcode result;
     curl_easy_setopt(curl, CURLOPT_URL, "https://example.com/");
     /* weaken TLS only for use with silly servers */
     curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS,
                      CURLSSLOPT_ALLOW_BEAST | CURLSSLOPT_NO_REVOKE);
-    res = curl_easy_perform(curl);
+    result = curl_easy_perform(curl);
     curl_easy_cleanup(curl);
   }
 }

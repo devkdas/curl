@@ -30,11 +30,10 @@
 #include "tool_msgs.h"
 #include "tool_parsecfg.h"
 #include "tool_util.h"
-#include "memdebug.h" /* keep this as LAST include */
 
 /* only acknowledge colon or equals as separators if the option was not
    specified with an initial dash! */
-#define ISSEP(x,dash) (!dash && (((x) == '=') || ((x) == ':')))
+#define ISSEP(x, dash) (!dash && (((x) == '=') || ((x) == ':')))
 
 /*
  * Copies the string from line to the param dynbuf, unquoting backslash-quoted
@@ -78,10 +77,9 @@ static int unslashquote(const char *line, struct dynbuf *param)
   return 0; /* ok */
 }
 
-#define MAX_CONFIG_LINE_LENGTH (10*1024*1024)
-
 /* return 0 on everything-is-fine, and non-zero otherwise */
-ParameterError parseconfig(const char *filename, int max_recursive)
+ParameterError parseconfig(const char *filename, int max_recursive,
+                           char **resolved)
 {
   FILE *file = NULL;
   bool usedarg = FALSE;
@@ -95,7 +93,7 @@ ParameterError parseconfig(const char *filename, int max_recursive)
     if(curlrc) {
       file = curlx_fopen(curlrc, FOPEN_READTEXT);
       if(!file) {
-        free(curlrc);
+        curlx_free(curlrc);
         return PARAM_READ_ERROR;
       }
       filename = pathalloc = curlrc;
@@ -264,10 +262,14 @@ ParameterError parseconfig(const char *filename, int max_recursive)
   if((err == PARAM_READ_ERROR) && filename)
     errorf("cannot read config from '%s'", filename);
 
-  free(pathalloc);
+  if(!err && resolved) {
+    *resolved = curlx_strdup(filename);
+    if(!*resolved)
+      err = PARAM_NO_MEM;
+  }
+  curlx_free(pathalloc);
   return err;
 }
-
 
 static bool get_line(FILE *input, struct dynbuf *buf, bool *error)
 {

@@ -27,9 +27,8 @@ AUTOMAKE_OPTIONS = foreign
 ACLOCAL_AMFLAGS = -I m4
 
 CMAKE_DIST =                                    \
- CMake/cmake_uninstall.cmake.in                 \
- CMake/CMakeConfigurableFile.in                 \
- CMake/curl-config.cmake.in                     \
+ CMake/cmake_uninstall.in.cmake                 \
+ CMake/curl-config.in.cmake                     \
  CMake/CurlSymbolHiding.cmake                   \
  CMake/CurlTests.c                              \
  CMake/FindBrotli.cmake                         \
@@ -37,6 +36,7 @@ CMAKE_DIST =                                    \
  CMake/FindGnuTLS.cmake                         \
  CMake/FindGSS.cmake                            \
  CMake/FindLDAP.cmake                           \
+ CMake/FindLibbacktrace.cmake                   \
  CMake/FindLibgsasl.cmake                       \
  CMake/FindLibidn2.cmake                        \
  CMake/FindLibpsl.cmake                         \

@@ -33,8 +33,6 @@
 #include "tool_cfgable.h"
 #include "terminal.h"
 
-#include "memdebug.h" /* keep this as LAST include */
-
 struct category_descriptors {
   const char *opt;
   const char *desc;
@@ -43,31 +41,31 @@ struct category_descriptors {
 
 static const struct category_descriptors categories[] = {
   /* important is left out because it is the default help page */
-  {"auth", "Authentication methods", CURLHELP_AUTH},
-  {"connection", "Manage connections", CURLHELP_CONNECTION},
-  {"curl", "The command line tool itself", CURLHELP_CURL},
-  {"deprecated", "Legacy", CURLHELP_DEPRECATED},
-  {"dns", "Names and resolving", CURLHELP_DNS},
-  {"file", "FILE protocol", CURLHELP_FILE},
-  {"ftp", "FTP protocol", CURLHELP_FTP},
-  {"global", "Global options", CURLHELP_GLOBAL},
-  {"http", "HTTP and HTTPS protocol", CURLHELP_HTTP},
-  {"imap", "IMAP protocol", CURLHELP_IMAP},
-  {"ldap", "LDAP protocol", CURLHELP_LDAP},
-  {"output", "File system output", CURLHELP_OUTPUT},
-  {"pop3", "POP3 protocol", CURLHELP_POP3},
-  {"post", "HTTP POST specific", CURLHELP_POST},
-  {"proxy", "Options for proxies", CURLHELP_PROXY},
-  {"scp", "SCP protocol", CURLHELP_SCP},
-  {"sftp", "SFTP protocol", CURLHELP_SFTP},
-  {"smtp", "SMTP protocol", CURLHELP_SMTP},
-  {"ssh", "SSH protocol", CURLHELP_SSH},
-  {"telnet", "TELNET protocol", CURLHELP_TELNET},
-  {"tftp", "TFTP protocol", CURLHELP_TFTP},
-  {"timeout", "Timeouts and delays", CURLHELP_TIMEOUT},
-  {"tls", "TLS/SSL related", CURLHELP_TLS},
-  {"upload", "Upload, sending data", CURLHELP_UPLOAD},
-  {"verbose", "Tracing, logging etc", CURLHELP_VERBOSE}
+  { "auth", "Authentication methods", CURLHELP_AUTH },
+  { "connection", "Manage connections", CURLHELP_CONNECTION },
+  { "curl", "The command line tool itself", CURLHELP_CURL },
+  { "deprecated", "Legacy", CURLHELP_DEPRECATED },
+  { "dns", "Names and resolving", CURLHELP_DNS },
+  { "file", "FILE protocol", CURLHELP_FILE },
+  { "ftp", "FTP protocol", CURLHELP_FTP },
+  { "global", "Global options", CURLHELP_GLOBAL },
+  { "http", "HTTP and HTTPS protocol", CURLHELP_HTTP },
+  { "imap", "IMAP protocol", CURLHELP_IMAP },
+  { "ldap", "LDAP protocol", CURLHELP_LDAP },
+  { "output", "File system output", CURLHELP_OUTPUT },
+  { "pop3", "POP3 protocol", CURLHELP_POP3 },
+  { "post", "HTTP POST specific", CURLHELP_POST },
+  { "proxy", "Options for proxies", CURLHELP_PROXY },
+  { "scp", "SCP protocol", CURLHELP_SCP },
+  { "sftp", "SFTP protocol", CURLHELP_SFTP },
+  { "smtp", "SMTP protocol", CURLHELP_SMTP },
+  { "ssh", "SSH protocol", CURLHELP_SSH },
+  { "telnet", "TELNET protocol", CURLHELP_TELNET },
+  { "tftp", "TFTP protocol", CURLHELP_TFTP },
+  { "timeout", "Timeouts and delays", CURLHELP_TIMEOUT },
+  { "tls", "TLS/SSL related", CURLHELP_TLS },
+  { "upload", "Upload, sending data", CURLHELP_UPLOAD },
+  { "verbose", "Tracing, logging etc", CURLHELP_VERBOSE }
 };
 
 static void print_category(unsigned int category, unsigned int cols)
@@ -230,7 +228,8 @@ void tool_help(const char *category)
   unsigned int cols = get_terminal_columns();
   /* If no category was provided */
   if(!category) {
-    const char *category_note = "\nThis is not the full help; this "
+    const char *category_note =
+      "\nThis is not the full help; this "
       "menu is split into categories.\nUse \"--help category\" to get "
       "an overview of all categories, which are:";
     const char *category_note2 =
@@ -307,7 +306,7 @@ void tool_help(const char *category)
 
 static bool is_debug(void)
 {
-  const char *const *builtin;
+  const char * const *builtin;
   for(builtin = feature_names; *builtin; ++builtin)
     if(curl_strequal("debug", *builtin))
       return TRUE;
@@ -316,7 +315,7 @@ static bool is_debug(void)
 
 void tool_version_info(void)
 {
-  const char *const *builtin;
+  const char * const *builtin;
   if(is_debug())
     curl_mfprintf(tool_stderr, "WARNING: this libcurl is Debug-enabled, "
                   "do not use in production\n\n");
@@ -366,7 +365,7 @@ void tool_version_info(void)
 #ifdef CURL_CA_EMBED
     ++feat_ext_count;
 #endif
-    feat_ext = malloc(sizeof(*feature_names) * (feat_ext_count + 1));
+    feat_ext = curlx_malloc(sizeof(*feature_names) * (feat_ext_count + 1));
     if(feat_ext) {
       memcpy((void *)feat_ext, feature_names,
              sizeof(*feature_names) * feature_count);
@@ -381,7 +380,7 @@ void tool_version_info(void)
       for(builtin = feat_ext; *builtin; ++builtin)
         curl_mprintf(" %s", *builtin);
       puts(""); /* newline */
-      free((void *)feat_ext);
+      curlx_free((void *)feat_ext);
     }
   }
   if(strcmp(CURL_VERSION, curlinfo->version)) {

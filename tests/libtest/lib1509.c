@@ -23,8 +23,6 @@
  ***************************************************************************/
 #include "first.h"
 
-#include "memdebug.h"
-
 static size_t realHeaderSize = 0;
 
 static size_t WriteOutput(char *ptr, size_t size, size_t nmemb, void *stream)
@@ -48,7 +46,7 @@ static CURLcode test_lib1509(const char *URL)
   long headerSize;
   CURLcode code;
   CURL *curl = NULL;
-  CURLcode res = CURLE_OK;
+  CURLcode result = CURLE_OK;
 
   global_init(CURL_GLOBAL_ALL);
 
@@ -69,7 +67,7 @@ static CURLcode test_lib1509(const char *URL)
     curl_mfprintf(stderr, "%s:%d curl_easy_perform() failed, "
                   "with code %d (%s)\n",
                   __FILE__, __LINE__, code, curl_easy_strerror(code));
-    res = TEST_ERR_MAJOR_BAD;
+    result = TEST_ERR_MAJOR_BAD;
     goto test_cleanup;
   }
 
@@ -78,7 +76,7 @@ static CURLcode test_lib1509(const char *URL)
     curl_mfprintf(stderr, "%s:%d curl_easy_getinfo() failed, "
                   "with code %d (%s)\n",
                   __FILE__, __LINE__, code, curl_easy_strerror(code));
-    res = TEST_ERR_MAJOR_BAD;
+    result = TEST_ERR_MAJOR_BAD;
     goto test_cleanup;
   }
 
@@ -90,5 +88,5 @@ test_cleanup:
   curl_easy_cleanup(curl);
   curl_global_cleanup();
 
-  return res;
+  return result;
 }

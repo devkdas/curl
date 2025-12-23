@@ -26,7 +26,6 @@
 
 #if !defined(CURL_DISABLE_PROXY) && !defined(CURL_DISABLE_HTTP)
 
-#include <curl/curl.h>
 #include "urldata.h"
 #include "curlx/dynbuf.h"
 #include "sendf.h"
@@ -41,23 +40,17 @@
 #include "connect.h"
 #include "curl_trc.h"
 #include "strcase.h"
-#include "vtls/vtls.h"
 #include "transfer.h"
-#include "multiif.h"
 #include "curlx/strparse.h"
-
-/* The last 2 #include files should be in this order */
-#include "curl_memory.h"
-#include "memdebug.h"
 
 
 typedef enum {
-    H1_TUNNEL_INIT,     /* init/default/no tunnel state */
-    H1_TUNNEL_CONNECT,  /* CONNECT request is being send */
-    H1_TUNNEL_RECEIVE,  /* CONNECT answer is being received */
-    H1_TUNNEL_RESPONSE, /* CONNECT response received completely */
-    H1_TUNNEL_ESTABLISHED,
-    H1_TUNNEL_FAILED
+  H1_TUNNEL_INIT,     /* init/default/no tunnel state */
+  H1_TUNNEL_CONNECT,  /* CONNECT request is being send */
+  H1_TUNNEL_RECEIVE,  /* CONNECT answer is being received */
+  H1_TUNNEL_RESPONSE, /* CONNECT response received completely */
+  H1_TUNNEL_ESTABLISHED,
+  H1_TUNNEL_FAILED
 } h1_tunnel_state;
 
 /* struct for HTTP CONNECT tunneling */
@@ -77,7 +70,6 @@ struct h1_tunnel_state {
   BIT(chunked_encoding);
   BIT(close_connection);
 };
-
 
 static bool tunnel_is_established(struct h1_tunnel_state *ts)
 {
@@ -116,7 +108,7 @@ static CURLcode tunnel_init(struct Curl_cfilter *cf,
     return CURLE_UNSUPPORTED_PROTOCOL;
   }
 
-  ts = calloc(1, sizeof(*ts));
+  ts = curlx_calloc(1, sizeof(*ts));
   if(!ts)
     return CURLE_OUT_OF_MEMORY;
 
@@ -127,7 +119,6 @@ static CURLcode tunnel_init(struct Curl_cfilter *cf,
   Curl_httpchunk_init(data, &ts->ch, TRUE);
 
   *pts = ts;
-  connkeep(cf->conn, "HTTP proxy CONNECT");
   return tunnel_reinit(cf, data, ts);
 }
 
@@ -195,7 +186,7 @@ static void tunnel_free(struct Curl_cfilter *cf,
       curlx_dyn_free(&ts->rcvbuf);
       curlx_dyn_free(&ts->request_data);
       Curl_httpchunk_free(data, &ts->ch);
-      free(ts);
+      curlx_free(ts);
       cf->ctx = NULL;
     }
   }
@@ -214,9 +205,9 @@ static CURLcode start_CONNECT(struct Curl_cfilter *cf,
   int http_minor;
   CURLcode result;
 
-    /* This only happens if we have looped here due to authentication
-       reasons, and we do not really use the newly cloned URL here
-       then. Just free() it. */
+  /* This only happens if we have looped here due to authentication
+     reasons, and we do not really use the newly cloned URL here
+     then. Just free it. */
   Curl_safefree(data->req.newurl);
 
   result = Curl_http_proxy_create_CONNECT(&req, cf, data, 1);
@@ -247,7 +238,7 @@ static CURLcode send_CONNECT(struct Curl_cfilter *cf,
                              struct h1_tunnel_state *ts,
                              bool *done)
 {
-  char *buf = curlx_dyn_ptr(&ts->request_data);
+  uint8_t *buf = curlx_dyn_uptr(&ts->request_data);
   size_t request_len = curlx_dyn_len(&ts->request_data);
   size_t blen = request_len;
   CURLcode result = CURLE_OK;
@@ -268,7 +259,7 @@ static CURLcode send_CONNECT(struct Curl_cfilter *cf,
 
   DEBUGASSERT(blen >= nwritten);
   ts->nsent += nwritten;
-  Curl_debug(data, CURLINFO_HEADER_OUT, buf, nwritten);
+  Curl_debug(data, CURLINFO_HEADER_OUT, (char *)buf, nwritten);
 
 out:
   if(result)
@@ -286,10 +277,8 @@ static CURLcode on_resp_header(struct Curl_cfilter *cf,
   struct SingleRequest *k = &data->req;
   (void)cf;
 
-  if((checkprefix("WWW-Authenticate:", header) &&
-      (401 == k->httpcode)) ||
-     (checkprefix("Proxy-authenticate:", header) &&
-      (407 == k->httpcode))) {
+  if((checkprefix("WWW-Authenticate:", header) && (401 == k->httpcode)) ||
+     (checkprefix("Proxy-authenticate:", header) && (407 == k->httpcode))) {
 
     bool proxy = (k->httpcode == 407);
     char *auth = Curl_copy_header_value(header);
@@ -299,13 +288,13 @@ static CURLcode on_resp_header(struct Curl_cfilter *cf,
     CURL_TRC_CF(data, cf, "CONNECT: fwd auth header '%s'", header);
     result = Curl_http_input_auth(data, proxy, auth);
 
-    free(auth);
+    curlx_free(auth);
 
     if(result)
       return result;
   }
   else if(checkprefix("Content-Length:", header)) {
-    if(k->httpcode/100 == 2) {
+    if(k->httpcode / 100 == 2) {
       /* A client MUST ignore any Content-Length or Transfer-Encoding
          header fields received in a successful response to CONNECT.
          "Successful" described as: 2xx (Successful). RFC 7231 4.3.6 */
@@ -324,7 +313,7 @@ static CURLcode on_resp_header(struct Curl_cfilter *cf,
                              STRCONST("Connection:"), STRCONST("close")))
     ts->close_connection = TRUE;
   else if(checkprefix("Transfer-Encoding:", header)) {
-    if(k->httpcode/100 == 2) {
+    if(k->httpcode / 100 == 2) {
       /* A client MUST ignore any Content-Length or Transfer-Encoding
          header fields received in a successful response to CONNECT.
          "Successful" described as: 2xx (Successful). RFC 7231 4.3.6 */
@@ -384,8 +373,8 @@ static CURLcode recv_CONNECT_resp(struct Curl_cfilter *cf,
       /* socket buffer drained, return */
       return CURLE_OK;
 
-    if(Curl_pgrsUpdate(data))
-      return CURLE_ABORTED_BY_CALLBACK;
+    if(!result)
+      result = Curl_pgrsUpdate(data);
 
     if(result) {
       ts->keepon = KEEPON_DONE;
@@ -498,8 +487,8 @@ static CURLcode recv_CONNECT_resp(struct Curl_cfilter *cf,
         ts->keepon = KEEPON_DONE;
       }
 
-      DEBUGASSERT(ts->keepon == KEEPON_IGNORE
-                  || ts->keepon == KEEPON_DONE);
+      DEBUGASSERT(ts->keepon == KEEPON_IGNORE ||
+                  ts->keepon == KEEPON_DONE);
       continue;
     }
 
@@ -513,7 +502,7 @@ static CURLcode recv_CONNECT_resp(struct Curl_cfilter *cf,
   if(error)
     result = CURLE_RECV_ERROR;
   *done = (ts->keepon == KEEPON_DONE);
-  if(!result && *done && data->info.httpproxycode/100 != 2) {
+  if(!result && *done && data->info.httpproxycode / 100 != 2) {
     /* Deal with the possibly already received authenticate
        headers. 'newurl' is set to a new URL if we must loop. */
     result = Curl_http_auth_act(data);
@@ -536,7 +525,7 @@ static CURLcode H1_CONNECT(struct Curl_cfilter *cf,
 
   do {
 
-    if(Curl_timeleft_ms(data, NULL, TRUE) < 0) {
+    if(Curl_timeleft_ms(data, TRUE) < 0) {
       failf(data, "Proxy CONNECT aborted due to timeout");
       result = CURLE_OPERATION_TIMEDOUT;
       goto out;
@@ -565,10 +554,8 @@ static CURLcode H1_CONNECT(struct Curl_cfilter *cf,
       /* read what is there */
       CURL_TRC_CF(data, cf, "CONNECT receive");
       result = recv_CONNECT_resp(cf, data, ts, &done);
-      if(Curl_pgrsUpdate(data)) {
-        result = CURLE_ABORTED_BY_CALLBACK;
-        goto out;
-      }
+      if(!result)
+        result = Curl_pgrsUpdate(data);
       /* error or not complete yet. return for more multi-multi */
       if(result || !done)
         goto out;
@@ -593,7 +580,6 @@ static CURLcode H1_CONNECT(struct Curl_cfilter *cf,
           CURL_TRC_CF(data, cf, "CONNECT need to close+open");
           infof(data, "Connect me again please");
           Curl_conn_cf_close(cf, data);
-          connkeep(conn, "HTTP proxy CONNECT");
           result = Curl_conn_cf_connect(cf->next, data, &done);
           goto out;
         }
@@ -611,11 +597,9 @@ static CURLcode H1_CONNECT(struct Curl_cfilter *cf,
   } while(data->req.newurl);
 
   DEBUGASSERT(ts->tunnel_state == H1_TUNNEL_RESPONSE);
-  if(data->info.httpproxycode/100 != 2) {
+  if(data->info.httpproxycode / 100 != 2) {
     /* a non-2xx response and we have no next URL to try. */
     Curl_safefree(data->req.newurl);
-    /* failure, close this connection to avoid reuse */
-    streamclose(conn, "proxy CONNECT failure");
     h1_tunnel_go_state(cf, ts, H1_TUNNEL_FAILED, data);
     failf(data, "CONNECT tunnel failed, response %d", data->req.httpcode);
     return CURLE_RECV_ERROR;
@@ -671,8 +655,7 @@ out:
     /* The real request will follow the CONNECT, reset request partially */
     Curl_req_soft_reset(&data->req, data);
     Curl_client_reset(data);
-    Curl_pgrsSetUploadCounter(data, 0);
-    Curl_pgrsSetDownloadCounter(data, 0);
+    Curl_pgrsReset(data);
 
     tunnel_free(cf, data);
   }
@@ -727,10 +710,9 @@ static void cf_h1_proxy_close(struct Curl_cfilter *cf,
   }
 }
 
-
 struct Curl_cftype Curl_cft_h1_proxy = {
   "H1-PROXY",
-  CF_TYPE_IP_CONNECT|CF_TYPE_PROXY,
+  CF_TYPE_IP_CONNECT | CF_TYPE_PROXY,
   0,
   cf_h1_proxy_destroy,
   cf_h1_proxy_connect,

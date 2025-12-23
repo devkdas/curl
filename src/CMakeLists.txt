@@ -28,8 +28,8 @@ set(_curl_cfiles_gen "")
 set(_curl_hfiles_gen "")
 set(_curl_definitions "")
 
-if(ENABLE_CURL_MANUAL AND (PERL_FOUND OR EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tool_hugehelp.c"))
-  if(PERL_FOUND)
+if(ENABLE_CURL_MANUAL AND (Perl_FOUND OR EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tool_hugehelp.c"))
+  if(Perl_FOUND)
     add_custom_command(OUTPUT "tool_hugehelp.c"
       COMMAND ${CMAKE_COMMAND} -E echo "#include \"tool_setup.h\"" > "tool_hugehelp.c"
       COMMAND ${CMAKE_COMMAND} -E echo "/* !checksrc! disable COPYRIGHT all */" >> "tool_hugehelp.c"
@@ -55,7 +55,7 @@ if(ENABLE_CURL_MANUAL AND (PERL_FOUND OR EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/too
 endif()
 
 if(CURL_CA_EMBED_SET)
-  if(PERL_FOUND)
+  if(Perl_FOUND)
     add_custom_command(OUTPUT "tool_ca_embed.c"
       COMMAND "${PERL_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/mk-file-embed.pl" --var curl_ca_embed
         < "${CURL_CA_EMBED}" > "tool_ca_embed.c"
@@ -109,12 +109,13 @@ target_link_libraries(${EXE_NAME} ${LIB_SELECTED_FOR_EXE} ${CURL_LIBS})
 add_executable(${PROJECT_NAME}::${EXE_NAME} ALIAS ${EXE_NAME})
 
 add_executable(curlinfo EXCLUDE_FROM_ALL "curlinfo.c")
+target_link_libraries(curlinfo PRIVATE ${CURL_LIBS})
 set_target_properties(curlinfo PROPERTIES UNITY_BUILD OFF)
 
 # special libcurltool library just for unittests
 add_library(curltool STATIC EXCLUDE_FROM_ALL ${CURL_CFILES} ${CURL_HFILES} ${_curlx_cfiles_lib} ${_curlx_hfiles_lib})
 target_compile_definitions(curltool PUBLIC "CURL_STATICLIB" "UNITTESTS")
-target_link_libraries(curltool PRIVATE ${CURL_LIBS})
+target_link_libraries(curltool PUBLIC ${CURL_LIBS})
 set_target_properties(curltool PROPERTIES C_CLANG_TIDY "")
 
 if(CURL_HAS_LTO)

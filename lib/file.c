@@ -55,23 +55,18 @@
 #endif
 
 #include "urldata.h"
-#include <curl/curl.h>
 #include "progress.h"
 #include "sendf.h"
+#include "curl_trc.h"
 #include "escape.h"
 #include "file.h"
-#include "speedcheck.h"
 #include "multiif.h"
 #include "transfer.h"
 #include "url.h"
 #include "parsedate.h" /* for the week day and month names */
 #include "curlx/fopen.h"
-#include "curlx/warnless.h"
+#include "curlx/timeval.h"
 #include "curl_range.h"
-
-/* The last 2 #include files should be in this order */
-#include "curl_memory.h"
-#include "memdebug.h"
 
 #if defined(_WIN32) || defined(MSDOS)
 #define DOS_FILESYSTEM 1
@@ -132,7 +127,6 @@ const struct Curl_handler Curl_handler_file = {
   PROTOPT_NONETWORK | PROTOPT_NOURLQUERY /* flags */
 };
 
-
 static void file_cleanup(struct FILEPROTO *file)
 {
   Curl_safefree(file->freepath);
@@ -149,7 +143,7 @@ static void file_easy_dtor(void *key, size_t klen, void *entry)
   (void)key;
   (void)klen;
   file_cleanup(file);
-  free(file);
+  curlx_free(file);
 }
 
 static CURLcode file_setup_connection(struct Curl_easy *data,
@@ -158,7 +152,7 @@ static CURLcode file_setup_connection(struct Curl_easy *data,
   struct FILEPROTO *filep;
   (void)conn;
   /* allocate the FILE specific struct */
-  filep = calloc(1, sizeof(*filep));
+  filep = curlx_calloc(1, sizeof(*filep));
   if(!filep ||
      Curl_meta_set(data, CURL_META_FILE_EASY, filep, file_easy_dtor))
     return CURLE_OUT_OF_MEMORY;
@@ -270,7 +264,7 @@ static CURLcode file_connect(struct Curl_easy *data, bool *done)
   file->path = real_path;
   #endif
 #endif
-  free(file->freepath);
+  curlx_free(file->freepath);
   file->freepath = real_path; /* free this when done */
 
   file->fd = fd;
@@ -321,7 +315,6 @@ static CURLcode file_upload(struct Curl_easy *data,
   CURLcode result = CURLE_OK;
   char *xfer_ulbuf;
   size_t xfer_ulblen;
-  curl_off_t bytecount = 0;
   struct_stat file_stat;
   const char *sendbuf;
   bool eos = FALSE;
@@ -337,13 +330,16 @@ static CURLcode file_upload(struct Curl_easy *data,
   if(!dir[1])
     return CURLE_FILE_COULDNT_READ_FILE; /* fix: better error code */
 
-  mode = O_WRONLY|O_CREAT|CURL_O_BINARY;
+  mode = O_WRONLY | O_CREAT | CURL_O_BINARY;
   if(data->state.resume_from)
     mode |= O_APPEND;
   else
     mode |= O_TRUNC;
 
-#if (defined(ANDROID) || defined(__ANDROID__)) && \
+#ifdef _WIN32
+  fd = curlx_open(file->path, mode,
+                  data->set.new_file_perms & (_S_IREAD | _S_IWRITE));
+#elif (defined(ANDROID) || defined(__ANDROID__)) && \
   (defined(__i386__) || defined(__arm__))
   fd = curlx_open(file->path, mode, (mode_t)data->set.new_file_perms);
 #else
@@ -408,17 +404,12 @@ static CURLcode file_upload(struct Curl_easy *data,
       result = CURLE_SEND_ERROR;
       break;
     }
-    bytecount += nwritten;
+    Curl_pgrs_upload_inc(data, nwritten);
 
-    Curl_pgrsSetUploadCounter(data, bytecount);
-
-    if(Curl_pgrsUpdate(data))
-      result = CURLE_ABORTED_BY_CALLBACK;
-    else
-      result = Curl_speedcheck(data, curlx_now());
+    result = Curl_pgrsCheck(data);
   }
-  if(!result && Curl_pgrsUpdate(data))
-    result = CURLE_ABORTED_BY_CALLBACK;
+  if(!result)
+    result = Curl_pgrsUpdate(data);
 
 out:
   close(fd);
@@ -483,7 +474,7 @@ static CURLcode file_do(struct Curl_easy *data, bool *done)
     const struct tm *tm = &buffer;
     char header[80];
     int headerlen;
-    static const char accept_ranges[]= { "Accept-ranges: bytes\r\n" };
+    static const char accept_ranges[] = { "Accept-ranges: bytes\r\n" };
     if(expected_size >= 0) {
       headerlen =
         curl_msnprintf(header, sizeof(header),
@@ -499,7 +490,7 @@ static CURLcode file_do(struct Curl_easy *data, bool *done)
     }
 
     filetime = (time_t)statbuf.st_mtime;
-    result = Curl_gmtime(filetime, &buffer);
+    result = curlx_gmtime(filetime, &buffer);
     if(result)
       return result;
 
@@ -507,7 +498,7 @@ static CURLcode file_do(struct Curl_easy *data, bool *done)
     headerlen =
       curl_msnprintf(header, sizeof(header),
                      "Last-Modified: %s, %02d %s %4d %02d:%02d:%02d GMT\r\n",
-                     Curl_wkday[tm->tm_wday ? tm->tm_wday-1 : 6],
+                     Curl_wkday[tm->tm_wday ? tm->tm_wday - 1 : 6],
                      tm->tm_mday,
                      Curl_month[tm->tm_mon],
                      tm->tm_year + 1900,
@@ -573,10 +564,10 @@ static CURLcode file_do(struct Curl_easy *data, bool *done)
     if(!S_ISDIR(statbuf.st_mode)) {
 #ifdef __AMIGA__
       if(data->state.resume_from !=
-          lseek(fd, (off_t)data->state.resume_from, SEEK_SET))
+         lseek(fd, (off_t)data->state.resume_from, SEEK_SET))
 #else
       if(data->state.resume_from !=
-          lseek(fd, data->state.resume_from, SEEK_SET))
+         lseek(fd, data->state.resume_from, SEEK_SET))
 #endif
         return CURLE_BAD_DOWNLOAD_RESUME;
     }
@@ -596,11 +587,11 @@ static CURLcode file_do(struct Curl_easy *data, bool *done)
       size_t bytestoread;
 
       if(size_known) {
-        bytestoread = (expected_size < (curl_off_t)(xfer_blen-1)) ?
-          curlx_sotouz(expected_size) : (xfer_blen-1);
+        bytestoread = (expected_size < (curl_off_t)(xfer_blen - 1)) ?
+          curlx_sotouz(expected_size) : (xfer_blen - 1);
       }
       else
-        bytestoread = xfer_blen-1;
+        bytestoread = xfer_blen - 1;
 
       nread = read(fd, xfer_buf, bytestoread);
 
@@ -617,10 +608,7 @@ static CURLcode file_do(struct Curl_easy *data, bool *done)
       if(result)
         goto out;
 
-      if(Curl_pgrsUpdate(data))
-        result = CURLE_ABORTED_BY_CALLBACK;
-      else
-        result = Curl_speedcheck(data, curlx_now());
+      result = Curl_pgrsCheck(data);
       if(result)
         goto out;
     }
@@ -654,8 +642,8 @@ static CURLcode file_do(struct Curl_easy *data, bool *done)
 #endif
   }
 
-  if(Curl_pgrsUpdate(data))
-    result = CURLE_ABORTED_BY_CALLBACK;
+  if(!result)
+    result = Curl_pgrsUpdate(data);
 
 out:
   Curl_multi_xfer_buf_release(data, xfer_buf);

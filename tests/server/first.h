@@ -70,6 +70,10 @@ extern const struct entry_s s_entries[];
 #endif
 
 #ifdef _WIN32
+#  define strdup _strdup
+#endif
+
+#ifdef _WIN32
 #  define CURL_STRNICMP(p1, p2, n) _strnicmp(p1, p2, n)
 #elif defined(HAVE_STRCASECMP)
 #  ifdef HAVE_STRINGS_H
@@ -93,8 +97,6 @@ enum {
   DOCNUMBER_WERULEZ    = -2,
   DOCNUMBER_404        = -1
 };
-
-#include <curl/curl.h> /* for curl_socket_t */
 
 #ifdef USE_UNIX_SOCKETS
 #ifdef HAVE_SYS_UN_H
